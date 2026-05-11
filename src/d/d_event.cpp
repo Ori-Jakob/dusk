@@ -1059,7 +1059,9 @@ int dEvt_control_c::Step() {
         mRoomNo = roomNo;
     }
 
-    if (mEventStatus == 0 && entry()) {
+    bool delayEventEntry = mEventStatus == 0 && mDoCPd_c::shouldDelayEventEntryForInputBuffer();
+
+    if (!delayEventEntry && mEventStatus == 0 && entry()) {
         if (dMsgObject_getMsgObjectClass() != NULL) {
             dMsgObject_setKillMessageFlag();
         }
@@ -1100,7 +1102,9 @@ int dEvt_control_c::Step() {
         #endif
     }
 
-    mNum = 0;
+    if (!delayEventEntry) {
+        mNum = 0;
+    }
     mChangeActor = NULL;
 
     if (chkEventFlag(0x200)) {

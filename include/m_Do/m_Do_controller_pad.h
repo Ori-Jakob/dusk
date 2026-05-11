@@ -15,6 +15,7 @@ public:
     static void convert(interface_of_controller_pad*, JUTGamePad*);
     static void LRlockCheck(interface_of_controller_pad*);
     static void recalibrate();
+    static bool shouldDelayEventEntryForInputBuffer();
 
     static interface_of_controller_pad& getCpadInfo(u32 pad) { return m_cpadInfo[pad]; }
     static JUTGamePad* getGamePad(u32 pad) { return m_gamePad[pad]; }

@@ -632,6 +632,9 @@ SettingsWindow::SettingsWindow(bool prelaunch) : mPrelaunch(prelaunch) {
                 .helpText = "Allow controller input even when the game window is not focused.",
                 .onChange = [](bool value) { aurora_set_background_input(value); },
             });
+        addOption("Input Buffering", getSettings().game.enableInputBuffering,
+            "Treats buttons held at the end of a cutscene as fresh presses on the first frame "
+            "control returns, similar to the HD version.");
 
         leftPane.add_section("Camera");
         addOption("Free Camera", getSettings().game.freeCamera,
