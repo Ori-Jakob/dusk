@@ -207,6 +207,7 @@ bool launchUILoop() {
             DuskLog.debug("aurora_begin_frame returned false, skipping draw this frame");
             continue;
         }
+        aurora_set_pbr_probe_capture_enabled(false);
 
         dusk::ui::update();
 
@@ -235,6 +236,23 @@ static void update_pbr_ibl_scene() {
     sLastStage = stage;
     sLastRoom = room;
     aurora_set_pbr_ibl_scene(stage, room);
+}
+
+static void update_pbr_probe_camera() {
+    const auto& settings = dusk::getSettings();
+    if (!settings.backend.enableExperimentalPbr.getValue() || !settings.backend.pbr.useIbl.getValue() ||
+        settings.backend.pbr.useAuthoredIbl.getValue()) {
+        return;
+    }
+
+    view_class* view = dComIfGd_getView();
+    if (view == nullptr) {
+        return;
+    }
+
+    Mtx44 projection;
+    C_MTXPerspective(projection, 90.0f, 1.0f, view->near_, view->far_);
+    aurora_set_pbr_probe_camera_matrices(&view->viewMtx[0][0], &view->invViewMtx[0][0], &projection[0][0]);
 }
 
 void main01(void) {
@@ -311,6 +329,7 @@ void main01(void) {
             DuskLog.debug("aurora_begin_frame returned false, skipping draw this frame");
             continue;
         }
+        aurora_set_pbr_probe_capture_enabled(false);
 
         VIWaitForRetrace();
 
@@ -325,14 +344,20 @@ void main01(void) {
             if (pacing.sim_ticks_to_run > 0) {
                 dusk::frame_interp::begin_frame(true, true, 0.0f);
                 dusk::frame_interp::set_ui_tick_pending(true);
+                const bool allowProbeCapture = pacing.sim_ticks_to_run == 1;
+                aurora_set_pbr_probe_capture_enabled(allowProbeCapture);
                 for (int sim_tick = 0; sim_tick < pacing.sim_ticks_to_run; ++sim_tick) {
                     dusk::frame_interp::begin_sim_tick();
                     mDoCPd_c::read();
                     dusk::gyro::read(pacing.sim_pace);
                     fapGm_Execute();
+                    if (allowProbeCapture) {
+                        update_pbr_probe_camera();
+                    }
                     mDoAud_Execute();
                     dusk::game_clock::commit_sim_tick();
                 }
+                aurora_set_pbr_probe_capture_enabled(false);
             }
 
             dusk::frame_interp::begin_frame(true, false,
@@ -354,7 +379,10 @@ void main01(void) {
 
             // EXECUTE GAME LOGIC & RENDER
             // This calls mDoGph_Painter -> JFWDisplay -> GX Functions
+            aurora_set_pbr_probe_capture_enabled(true);
             fapGm_Execute();
+            update_pbr_probe_camera();
+            aurora_set_pbr_probe_capture_enabled(false);
 
             mDoAud_Execute();
         }

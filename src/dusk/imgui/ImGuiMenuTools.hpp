@@ -13,6 +13,7 @@ namespace dusk {
     class ImGuiMenuTools {
     public:
         ImGuiMenuTools();
+        void ApplyGraphicsDebugSettings();
         void draw();
         void afterDraw();
 
@@ -21,8 +22,10 @@ namespace dusk {
 		void ShowProcessManager();
 		void ShowHeapOverlay();
 		void ShowStubLog();
-		void ShowMapLoader();
+        void ShowMapLoader();
         void ShowBloomWindow();
+        void ShowPbrWindow();
+        void ShowPbrIblOverlay();
         void ShowPlayerInfo();
         void ShowAudioDebug();
         void ShowSaveEditor();
@@ -46,6 +49,9 @@ namespace dusk {
 		bool m_showMapLoader = false;
 
         bool m_showBloomWindow = false;
+        bool m_showPbrWindow = false;
+        bool m_showPbrIblOverlay = false;
+        int m_pbrIblOverlayCorner = 1;
 
         bool m_showAudioDebug = false;
 		struct {

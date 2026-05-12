@@ -151,8 +151,17 @@ GX environment/raster lighting color used by the rest of the PBR path.
 
 When IBL is enabled, the shader samples a cube irradiance map for indirect diffuse, a prefiltered specular cube with
 roughness-driven mip selection, and a split-sum BRDF LUT for indirect specular. Aurora creates neutral fallback IBL
-textures at startup and tints them with the same GX environment/raster lighting color. Authored IBL assets can override
-those fallback textures globally, per stage, or per room.
+textures at startup and tints them with the same GX environment/raster lighting color. Dusk now defaults to probe-based
+IBL, with an ImGui toggle to use authored IBL assets instead. Runtime probes replay the current frame's perspective GX
+draws from the active camera position into a double-buffered cubemap. To keep the cost under control, the runtime path
+updates one 32x32 face every sixth native simulation frame only while a refresh is pending, freezes the probe camera for
+each six-face refresh cycle, and only replays native sim-frame draws so interpolation presentation frames stay smooth. By
+default runtime probes behave as cached scene probes: a refresh is requested when no completed probe is available yet,
+when the scene/room changes, or when `Refresh Runtime Probe` is pressed in the developer menu. After all six raw faces are
+captured, a GPU filter pass convolves a 16x16 diffuse irradiance cube and a 32x32 roughness-prefiltered specular mip
+chain from the captured cube. `Auto Update Runtime Probe` can be enabled in ImGui for experimental camera/periodic
+refreshes. Authored IBL assets can override the runtime probe source globally, per stage, or per room when `Use Authored
+IBL Assets` is enabled in the developer menu.
 
 ## Authored IBL Assets
 
@@ -223,23 +232,31 @@ The ImGui developer menu exposes experimental controls for diffuse scale, specul
 strength, environment tint strength, IBL diffuse/specular strength, normal strength, normal green-channel flipping,
 tangent handedness inversion, the built-in sword blade material values, and the per-sword map toggles. These controls are
 stored under `backend.pbr.*` in the normal Dusk config file, and each group has a reset button that restores its default
-authoring values.
+authoring values. The IBL source toggle is stored as `backend.pbr.useAuthoredIbl`; its default is `false`, which requests
+the runtime probe-based IBL path. Runtime probe auto-refresh is stored as `backend.pbr.autoUpdateProbeIbl` and defaults
+to `false` so probes stay cached unless the scene changes or the developer menu refresh button is used.
+
+The developer menu also has a PBR debug visualization dropdown stored as `backend.pbr.debugMode`. Modes include albedo,
+roughness, metallic, AO, specular, normal, GX light tint, direct diffuse/specular, and IBL diffuse/specular. The debug
+view only changes draws that are using the experimental PBR path; non-PBR GX draws continue to render normally.
+
+The developer menu also exposes a `PBR IBL Overlay` under `Debug`. This overlay shows the currently requested and active
+IBL source, runtime probe capture state, capture face, refresh/filter status, probe texture sizes, and which authored IBL
+asset layers loaded for the current global/stage/room selection. The same status block is available inside the PBR
+Material Override window under `IBL Runtime Status`.
 
 Current limitations:
 
 - Only one PBR material sidecar set is bound per draw.
-- Authored IBL uses static DDS face files. Runtime scene probe capture is not implemented yet; that requires re-rendering
-  the scene six times from a probe camera and feeding the result through an irradiance/prefilter pipeline.
+- Runtime probe filtering uses a fixed-sample GPU approximation, not an offline-quality prefilter.
 - Built-in untextured material overrides are limited to known material targets.
-- Normal maps use derivative-based tangent reconstruction; vertex-provided GX NBT tangents/binormals are not supported
-  yet.
+- Normal maps use vertex-provided GX NBT tangents/binormals when the draw supplies them and fall back to derivative-based
+  tangent reconstruction otherwise.
 
-## Future Implementations
-
-- Runtime probe capture for scene-specific cubemaps.
-- Better preservation of TEV/material color behavior for materials that rely on original color-combiner output.
-- Debug visualization modes for albedo, roughness, metallic, AO, specular, normal, GX light tint, direct diffuse, and
-  direct specular, IBL diffuse, and IBL specular.
+PBR sidecars preserve more of the original GX material behavior by using the TEV/color-combiner output as the material
+albedo, then applying the replacement roughness, metallic, AO, specular, normal, and emissive maps on top. This keeps
+vertex colors, material colors, raster lighting tint, and multi-stage color-combiner effects from being discarded just
+because a PBR sidecar exists.
 
 ## Implementation Notes
 

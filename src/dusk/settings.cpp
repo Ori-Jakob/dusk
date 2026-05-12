@@ -1,6 +1,8 @@
 #include "dusk/settings.h"
 #include "dusk/config.hpp"
 
+#include <aurora/gfx.h>
+
 namespace dusk {
 
 UserSettings g_userSettings = {
@@ -124,6 +126,18 @@ UserSettings g_userSettings = {
         .skipPreLaunchUI {"backend.skipPreLaunchUI", false},
         .showPipelineCompilation {"backend.showPipelineCompilation", false},
         .enableExperimentalPbr {"backend.enableExperimentalPbr", false},
+        .gxFogOverrideEnabled {"backend.gxFogOverrideEnabled", false},
+        .gxFogExposure {"backend.gxFogExposure", 1.0f},
+        .gxFogOpacity {"backend.gxFogOpacity", 1.0f},
+        .gxFogColorR {"backend.gxFogColorR", 0.85f},
+        .gxFogColorG {"backend.gxFogColorG", 0.90f},
+        .gxFogColorB {"backend.gxFogColorB", 1.0f},
+        .cameraFogOverrideEnabled {"backend.cameraFogOverrideEnabled", false},
+        .cameraFogExposure {"backend.cameraFogExposure", 1.0f},
+        .cameraFogOpacity {"backend.cameraFogOpacity", 1.0f},
+        .cameraFogColorR {"backend.cameraFogColorR", 1.0f},
+        .cameraFogColorG {"backend.cameraFogColorG", 1.0f},
+        .cameraFogColorB {"backend.cameraFogColorB", 1.0f},
         .pbr = {
             .ambient {"backend.pbr.ambient", 0.30f},
             .ambientSpecular {"backend.pbr.ambientSpecular", 0.04f},
@@ -141,8 +155,11 @@ UserSettings g_userSettings = {
             .horizonAmbient {"backend.pbr.horizonAmbient", 0.80f},
             .environmentTint {"backend.pbr.environmentTint", 1.0f},
             .useIbl {"backend.pbr.useIbl", true},
+            .useAuthoredIbl {"backend.pbr.useAuthoredIbl", false},
+            .autoUpdateProbeIbl {"backend.pbr.autoUpdateProbeIbl", false},
             .iblDiffuseStrength {"backend.pbr.iblDiffuseStrength", 1.0f},
             .iblSpecularStrength {"backend.pbr.iblSpecularStrength", 1.0f},
+            .debugMode {"backend.pbr.debugMode", static_cast<int>(AURORA_PBR_DEBUG_OFF)},
             .ordonSwordBlade = {
                 .roughness {"backend.pbr.ordonSwordBlade.roughness", 0.18f},
                 .metallic {"backend.pbr.ordonSwordBlade.metallic", 1.0f},
@@ -215,8 +232,11 @@ static void registerPbrSettings(UserSettings::PbrSettings& settings) {
     Register(settings.horizonAmbient);
     Register(settings.environmentTint);
     Register(settings.useIbl);
+    Register(settings.useAuthoredIbl);
+    Register(settings.autoUpdateProbeIbl);
     Register(settings.iblDiffuseStrength);
     Register(settings.iblSpecularStrength);
+    Register(settings.debugMode);
     registerPbrSwordMaterialSettings(settings.ordonSwordBlade);
     registerPbrSwordMaterialSettings(settings.masterSwordBlade);
 }
@@ -320,6 +340,18 @@ void registerSettings() {
     Register(g_userSettings.backend.skipPreLaunchUI);
     Register(g_userSettings.backend.showPipelineCompilation);
     Register(g_userSettings.backend.enableExperimentalPbr);
+    Register(g_userSettings.backend.gxFogOverrideEnabled);
+    Register(g_userSettings.backend.gxFogExposure);
+    Register(g_userSettings.backend.gxFogOpacity);
+    Register(g_userSettings.backend.gxFogColorR);
+    Register(g_userSettings.backend.gxFogColorG);
+    Register(g_userSettings.backend.gxFogColorB);
+    Register(g_userSettings.backend.cameraFogOverrideEnabled);
+    Register(g_userSettings.backend.cameraFogExposure);
+    Register(g_userSettings.backend.cameraFogOpacity);
+    Register(g_userSettings.backend.cameraFogColorR);
+    Register(g_userSettings.backend.cameraFogColorG);
+    Register(g_userSettings.backend.cameraFogColorB);
     registerPbrSettings(g_userSettings.backend.pbr);
     Register(g_userSettings.backend.wasPresetChosen);
     Register(g_userSettings.backend.checkForUpdates);

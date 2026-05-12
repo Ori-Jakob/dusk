@@ -11,6 +11,7 @@ void apply_normal();
 void apply_ambient_gradient();
 void apply_ibl();
 void apply_fill_direction();
+void apply_debug();
 
 void reset_lighting();
 void reset_material_scales();
@@ -18,6 +19,7 @@ void reset_normal();
 void reset_ambient_gradient();
 void reset_ibl();
 void reset_fill_direction();
+void reset_debug();
 
 void apply_sword_material(pbr_material_override::SwordMaterialKind kind);
 void save_sword_material(pbr_material_override::SwordMaterialKind kind);

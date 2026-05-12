@@ -65,6 +65,9 @@ void apply_ambient_gradient() {
 
 void apply_ibl() {
     const auto& pbr = getSettings().backend.pbr;
+    aurora_set_pbr_ibl_source(pbr.useAuthoredIbl.getValue() ? AURORA_PBR_IBL_SOURCE_AUTHORED
+                                                            : AURORA_PBR_IBL_SOURCE_PROBE);
+    aurora_set_pbr_probe_auto_refresh(pbr.autoUpdateProbeIbl.getValue());
     aurora_set_pbr_ibl_params(pbr.useIbl.getValue(), pbr.iblDiffuseStrength.getValue(),
                               pbr.iblSpecularStrength.getValue());
 }
@@ -72,6 +75,11 @@ void apply_ibl() {
 void apply_fill_direction() {
     const auto& pbr = getSettings().backend.pbr;
     aurora_set_pbr_fill_dir(pbr.fillDirX.getValue(), pbr.fillDirY.getValue(), pbr.fillDirZ.getValue());
+}
+
+void apply_debug() {
+    const auto& pbr = getSettings().backend.pbr;
+    aurora_set_pbr_debug_mode(static_cast<AuroraPbrDebugMode>(pbr.debugMode.getValue()));
 }
 
 void apply_sword_material(pbr_material_override::SwordMaterialKind kind) {
@@ -116,6 +124,7 @@ void apply() {
     apply_ambient_gradient();
     apply_ibl();
     apply_fill_direction();
+    apply_debug();
     apply_sword_material(pbr_material_override::SwordMaterialKind::Ordon);
     apply_sword_material(pbr_material_override::SwordMaterialKind::Master);
 }
@@ -155,6 +164,8 @@ void reset_ambient_gradient() {
 void reset_ibl() {
     auto& pbr = getSettings().backend.pbr;
     reset(pbr.useIbl);
+    reset(pbr.useAuthoredIbl);
+    reset(pbr.autoUpdateProbeIbl);
     reset(pbr.iblDiffuseStrength);
     reset(pbr.iblSpecularStrength);
     apply_ibl();
@@ -166,6 +177,12 @@ void reset_fill_direction() {
     reset(pbr.fillDirY);
     reset(pbr.fillDirZ);
     apply_fill_direction();
+}
+
+void reset_debug() {
+    auto& pbr = getSettings().backend.pbr;
+    reset(pbr.debugMode);
+    apply_debug();
 }
 
 void reset_sword_material(pbr_material_override::SwordMaterialKind kind) {

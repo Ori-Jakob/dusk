@@ -238,6 +238,7 @@ namespace dusk {
     }
 
     void ImGuiConsole::UpdateSettings() {
+        m_menuTools.ApplyGraphicsDebugSettings();
         getTransientSettings().skipFrameRateLimit = getSettings().game.enableTurboKeybind && ImGui::IsKeyDown(ImGuiKey_Tab);
 
         if (dusk::frame_interp::get_ui_tick_pending() && mDoMain::developmentMode == 1 && (mDoCPd_c::getHold(PAD_1) & (PAD_TRIGGER_R | PAD_TRIGGER_L)) == (PAD_TRIGGER_R | PAD_TRIGGER_L) && mDoCPd_c::getTrigY(PAD_1)) {
@@ -371,6 +372,8 @@ namespace dusk {
             m_menuTools.ShowStubLog();
             m_menuTools.ShowMapLoader();
             m_menuTools.ShowBloomWindow();
+            m_menuTools.ShowPbrWindow();
+            m_menuTools.ShowPbrIblOverlay();
             m_menuTools.ShowPlayerInfo();
             m_menuTools.ShowAudioDebug();
             m_menuTools.ShowSaveEditor();

@@ -11,10 +11,50 @@
 #include "f_op/f_op_kankyo_mng.h"
 #include "m_Do/m_Do_graphic.h"
 #include "m_Do/m_Do_lib.h"
+#include <algorithm>
 #include <cstring>
 #if TARGET_PC
 #include "dusk/frame_interpolation.h"
+#include "dusk/settings.h"
 #endif
+
+namespace {
+#if TARGET_PC
+float get_camera_fog_opacity_scale() {
+    const auto& backend = dusk::getSettings().backend;
+    if (!backend.cameraFogOverrideEnabled.getValue()) {
+        return 1.0f;
+    }
+
+    return std::clamp(backend.cameraFogOpacity.getValue(), 0.0f, 1.0f);
+}
+
+u8 camera_fog_color_component(u8 value, float tint, float exposure) {
+    return static_cast<u8>(std::clamp(static_cast<float>(value) * tint * exposure, 0.0f, 255.0f));
+}
+
+void apply_camera_fog_color_override(GXColor& color) {
+    const auto& backend = dusk::getSettings().backend;
+    if (!backend.cameraFogOverrideEnabled.getValue()) {
+        return;
+    }
+
+    const float exposure = std::clamp(backend.cameraFogExposure.getValue(), 0.0f, 4.0f);
+    const float tintR = std::clamp(backend.cameraFogColorR.getValue(), 0.0f, 1.0f);
+    const float tintG = std::clamp(backend.cameraFogColorG.getValue(), 0.0f, 1.0f);
+    const float tintB = std::clamp(backend.cameraFogColorB.getValue(), 0.0f, 1.0f);
+    color.r = camera_fog_color_component(color.r, tintR, exposure);
+    color.g = camera_fog_color_component(color.g, tintG, exposure);
+    color.b = camera_fog_color_component(color.b, tintB, exposure);
+}
+#else
+float get_camera_fog_opacity_scale() {
+    return 1.0f;
+}
+
+void apply_camera_fog_color_override(GXColor&) {}
+#endif
+}  // namespace
 
 static void vectle_calc(DOUBLE_POS* i_pos, cXyz* o_out) {
     double s = sqrt(i_pos->x * i_pos->x + i_pos->y * i_pos->y + i_pos->z * i_pos->z);
@@ -4400,6 +4440,8 @@ void drawCloudShadow(Mtx drawMtx, u8** tex) {
             color_reg1.r = (0.45f * sp38.r) + (0.55f * sp44.r);
             color_reg1.g = (0.45f * sp38.g) + (0.55f * sp44.g);
             color_reg1.b = (0.45f * sp38.b) + (0.55f * sp44.b);
+            apply_camera_fog_color_override(color_reg0);
+            apply_camera_fog_color_override(color_reg1);
 
             dKyr_set_btitex(&texobj, (ResTIMG*)tex[0]);
             GXSetNumChans(0);
@@ -4445,6 +4487,8 @@ void drawCloudShadow(Mtx drawMtx, u8** tex) {
             color_reg1.g = 0x32;
             color_reg1.b = 0;
             color_reg1.a = 0xFF;
+            apply_camera_fog_color_override(color_reg0);
+            apply_camera_fog_color_override(color_reg1);
 
             dKyr_set_btitex_common(&texobj, (ResTIMG*)tex[0], GX_TEXMAP1);
 
@@ -4509,7 +4553,9 @@ void drawCloudShadow(Mtx drawMtx, u8** tex) {
             f32 size = cloud_packet->mCloudEff[i].mSize;
 
             if (!(cloud_packet->mCloudEff[i].mAlpha <= 0.01f)) {
-                color_reg0.a = 255.0f * (cloud_packet->mCloudEff[i].mAlpha * var_f29);
+                color_reg0.a = static_cast<u8>(std::clamp(
+                    255.0f * (cloud_packet->mCloudEff[i].mAlpha * var_f29) * get_camera_fog_opacity_scale(), 0.0f,
+                    255.0f));
                 GXSetTevColor(GX_TEVREG0, color_reg0);
 
                 sp5C.x = cloud_packet->mCloudEff[i].mBasePos.x + cloud_packet->mCloudEff[i].mPosition.x;
