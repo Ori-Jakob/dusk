@@ -43,6 +43,7 @@
 #include <cstring>
 
 #include <filesystem>
+#include <string>
 #include <system_error>
 #include <thread>
 #include "SSystem/SComponent/c_API.h"
@@ -66,6 +67,7 @@
 
 #include <aurora/aurora.h>
 #include <aurora/event.h>
+#include <aurora/gfx.h>
 #include <aurora/main.h>
 #include <aurora/dvd.h>
 #include <dolphin/dvd.h>
@@ -78,8 +80,9 @@
 #include "dusk/audio/DuskAudioSystem.h"
 #include "dusk/audio/DuskDsp.hpp"
 #include "dusk/config.hpp"
-#include "dusk/settings.h"
 #include "dusk/io.hpp"
+#include "dusk/pbr_settings.h"
+#include "dusk/settings.h"
 #include "dusk/version.hpp"
 #include "dusk/discord_presence.hpp"
 #include "tracy/Tracy.hpp"
@@ -216,6 +219,24 @@ bool launchUILoop() {
     return dusk::IsRunning;
 }
 
+static void update_pbr_ibl_scene() {
+    static std::string sLastStage;
+    static int sLastRoom = -999;
+
+    const char* stage = dusk::IsGameLaunched ? dComIfGp_getStartStageName() : "";
+    if (stage == nullptr) {
+        stage = "";
+    }
+    const int room = dusk::IsGameLaunched ? dComIfGp_getStartStageRoomNo() : -1;
+    if (sLastStage == stage && sLastRoom == room) {
+        return;
+    }
+
+    sLastStage = stage;
+    sLastRoom = room;
+    aurora_set_pbr_ibl_scene(stage, room);
+}
+
 void main01(void) {
     OS_REPORT("\x1b[m");
 
@@ -297,6 +318,7 @@ void main01(void) {
         mDoGph_gInf_c::updateRenderSize();
 
         dusk::ui::update();
+        update_pbr_ibl_scene();
 
         const auto pacing = dusk::game_clock::advance_main_loop();
         if (pacing.is_interpolating) {
@@ -724,6 +746,7 @@ int game_main(int argc, char* argv[]) {
         config.allowTextureReplacements = true;
         config.allowTextureDumps = false;
         auroraInfo = aurora_initialize(argc, argv, &config);
+        dusk::pbr_settings::apply();
     }
 
 #ifdef DUSK_DISCORD

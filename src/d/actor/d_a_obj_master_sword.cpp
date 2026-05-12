@@ -9,6 +9,7 @@
 #include "d/actor/d_a_player.h"
 #include "d/d_com_inf_game.h"
 #include "d/d_meter2_info.h"
+#include "dusk/pbr_material_override.h"
 
 daObjMasterSword_Attr_c const daObjMasterSword_c::mAttr = {1.0f};
 
@@ -62,6 +63,10 @@ int daObjMasterSword_c::CreateHeap() {
     if (mpModel == NULL) {
         return 0;
     }
+#if TARGET_PC
+    dusk::pbr_material_override::register_sword_model(
+        mpModel, dusk::pbr_material_override::SwordMaterialKind::Master);
+#endif
 
     J3DAnmTextureSRTKey* pbtk = (J3DAnmTextureSRTKey*)dComIfG_getObjectRes(l_arcName, 11);
     if (!mBtk.init(modelData, pbtk, TRUE, J3DFrameCtrl::EMode_LOOP, 1.0f, 0, -1)) {
@@ -167,6 +172,9 @@ static int daObjMasterSword_Delete(daObjMasterSword_c* i_this) {
 }
 
 daObjMasterSword_c::~daObjMasterSword_c() {
+#if TARGET_PC
+    dusk::pbr_material_override::unregister_model(mpModel);
+#endif
     dComIfG_resDelete(&mPhase, l_arcName);
 }
 

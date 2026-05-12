@@ -52,6 +52,7 @@
 #include "d/d_s_play.h"
 
 #include "dusk/frame_interpolation.h"
+#include "dusk/pbr_material_override.h"
 #include "dusk/settings.h"
 #include "res/Object/Alink.h"
 #include <cstring>
@@ -4239,6 +4240,12 @@ int daAlink_c::createHeap() {
     if (!(mpSwMModel = initModelEnv(dRes_ID_ALINK_BMD_AL_SWM_e, 0x1000200))) {
         return 0;
     }
+#if TARGET_PC
+    dusk::pbr_material_override::register_sword_model(
+        mpSwAModel, dusk::pbr_material_override::SwordMaterialKind::Ordon);
+    dusk::pbr_material_override::register_sword_model(
+        mpSwMModel, dusk::pbr_material_override::SwordMaterialKind::Master);
+#endif
 
     if (!(mpSwASheathModel = initModel(dRes_ID_ALINK_BMD_AL_PODA_e, 0))) {
         return 0;
@@ -19792,6 +19799,11 @@ static int daAlink_Draw(daAlink_c* i_this) {
 }
 
 daAlink_c::~daAlink_c() {
+#if TARGET_PC
+    dusk::pbr_material_override::unregister_model(mpSwAModel);
+    dusk::pbr_material_override::unregister_model(mpSwMModel);
+#endif
+
     dComIfGp_clearPlayerStatus0(0, ~0x400030);
     dComIfGp_clearPlayerStatus1(0, 0x7FB7B78);
 

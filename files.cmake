@@ -1414,6 +1414,7 @@ set(DUSK_FILES
         include/dusk/endian_gx.hpp
         include/dusk/config.hpp
         include/dusk/dvd_asset.hpp
+        include/dusk/pbr_settings.h
         include/dusk/scope_guard.hpp
         src/dusk/dvd_asset.cpp
         src/d/actor/d_a_alink_dusk.cpp
@@ -1434,6 +1435,8 @@ set(DUSK_FILES
         src/dusk/io.cpp
         src/dusk/layout.cpp
         src/dusk/logging.cpp
+        src/dusk/pbr_material_override.cpp
+        src/dusk/pbr_settings.cpp
         src/dusk/settings.cpp
         src/dusk/stubs.cpp
         src/dusk/update_check.cpp

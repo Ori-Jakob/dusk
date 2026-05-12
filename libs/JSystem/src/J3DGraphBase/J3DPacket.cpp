@@ -8,6 +8,9 @@
 #include "JSystem/J3DGraphBase/J3DPacket.h"
 #include "JSystem/J3DGraphBase/J3DShapeMtx.h"
 #include "JSystem/JKernel/JKRHeap.h"
+#if TARGET_PC
+#include "dusk/pbr_material_override.h"
+#endif
 #include "global.h"
 #include "tracy/Tracy.hpp"
 
@@ -209,8 +212,11 @@ bool J3DMatPacket::isSame(J3DMatPacket* pOther) const {
 
 void J3DMatPacket::draw() {
     ZoneScoped;
+    J3DShapePacket* packet = getShapePacket();
 #if TARGET_PC 
     j3dSys.setTexture(mpTexture);
+    const bool pbrOverrideActive =
+        dusk::pbr_material_override::begin_j3d_material_draw(packet != NULL ? packet->mpModel : NULL, mpMaterial);
 #endif
     mpMaterial->load();
 
@@ -224,7 +230,6 @@ void J3DMatPacket::draw() {
 
     callDL();
 
-    J3DShapePacket* packet = getShapePacket();
 #if TARGET_PC
     packet->mpModel->getVertexBuffer()->setArray();
 #endif
@@ -245,6 +250,9 @@ void J3DMatPacket::draw() {
     if (mpMaterial->mMaterialName != nullptr) {
         GXPopDebugGroup();
     }
+#endif
+#if TARGET_PC
+    dusk::pbr_material_override::end_j3d_material_draw(pbrOverrideActive);
 #endif
 }
 

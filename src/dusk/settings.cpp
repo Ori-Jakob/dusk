@@ -123,6 +123,55 @@ UserSettings g_userSettings = {
         .graphicsBackend {"backend.graphicsBackend", "auto"},
         .skipPreLaunchUI {"backend.skipPreLaunchUI", false},
         .showPipelineCompilation {"backend.showPipelineCompilation", false},
+        .enableExperimentalPbr {"backend.enableExperimentalPbr", false},
+        .pbr = {
+            .ambient {"backend.pbr.ambient", 0.30f},
+            .ambientSpecular {"backend.pbr.ambientSpecular", 0.04f},
+            .fillIntensity {"backend.pbr.fillIntensity", 0.20f},
+            .fillDirX {"backend.pbr.fillDirX", 0.39f},
+            .fillDirY {"backend.pbr.fillDirY", -0.44f},
+            .fillDirZ {"backend.pbr.fillDirZ", -0.81f},
+            .diffuseScale {"backend.pbr.diffuseScale", 1.0f},
+            .specularScale {"backend.pbr.specularScale", 1.0f},
+            .normalStrength {"backend.pbr.normalStrength", 1.0f},
+            .flipNormalY {"backend.pbr.flipNormalY", false},
+            .invertNormalHandedness {"backend.pbr.invertNormalHandedness", false},
+            .skyAmbient {"backend.pbr.skyAmbient", 1.15f},
+            .groundAmbient {"backend.pbr.groundAmbient", 0.45f},
+            .horizonAmbient {"backend.pbr.horizonAmbient", 0.80f},
+            .environmentTint {"backend.pbr.environmentTint", 1.0f},
+            .useIbl {"backend.pbr.useIbl", true},
+            .iblDiffuseStrength {"backend.pbr.iblDiffuseStrength", 1.0f},
+            .iblSpecularStrength {"backend.pbr.iblSpecularStrength", 1.0f},
+            .ordonSwordBlade = {
+                .roughness {"backend.pbr.ordonSwordBlade.roughness", 0.18f},
+                .metallic {"backend.pbr.ordonSwordBlade.metallic", 1.0f},
+                .ambientOcclusion {"backend.pbr.ordonSwordBlade.ambientOcclusion", 1.0f},
+                .specular {"backend.pbr.ordonSwordBlade.specular", 0.95f},
+                .emissiveR {"backend.pbr.ordonSwordBlade.emissiveR", 0.0f},
+                .emissiveG {"backend.pbr.ordonSwordBlade.emissiveG", 0.0f},
+                .emissiveB {"backend.pbr.ordonSwordBlade.emissiveB", 0.0f},
+                .emissiveStrength {"backend.pbr.ordonSwordBlade.emissiveStrength", 0.0f},
+                .useRmaosMap {"backend.pbr.ordonSwordBlade.useRmaosMap", true},
+                .useLooseMaps {"backend.pbr.ordonSwordBlade.useLooseMaps", true},
+                .useNormalMap {"backend.pbr.ordonSwordBlade.useNormalMap", true},
+                .useEmissiveMap {"backend.pbr.ordonSwordBlade.useEmissiveMap", true},
+            },
+            .masterSwordBlade = {
+                .roughness {"backend.pbr.masterSwordBlade.roughness", 0.15f},
+                .metallic {"backend.pbr.masterSwordBlade.metallic", 1.0f},
+                .ambientOcclusion {"backend.pbr.masterSwordBlade.ambientOcclusion", 1.0f},
+                .specular {"backend.pbr.masterSwordBlade.specular", 1.0f},
+                .emissiveR {"backend.pbr.masterSwordBlade.emissiveR", 0.35f},
+                .emissiveG {"backend.pbr.masterSwordBlade.emissiveG", 0.55f},
+                .emissiveB {"backend.pbr.masterSwordBlade.emissiveB", 1.0f},
+                .emissiveStrength {"backend.pbr.masterSwordBlade.emissiveStrength", 0.035f},
+                .useRmaosMap {"backend.pbr.masterSwordBlade.useRmaosMap", true},
+                .useLooseMaps {"backend.pbr.masterSwordBlade.useLooseMaps", true},
+                .useNormalMap {"backend.pbr.masterSwordBlade.useNormalMap", true},
+                .useEmissiveMap {"backend.pbr.masterSwordBlade.useEmissiveMap", true},
+            },
+        },
         .wasPresetChosen {"backend.wasPresetChosen", false},
         .checkForUpdates {"backend.checkForUpdates", true},
         .cardFileType {"backend.cardFileType", static_cast<int>(CARD_GCIFOLDER)},
@@ -132,6 +181,44 @@ UserSettings g_userSettings = {
 
 UserSettings& getSettings() {
     return g_userSettings;
+}
+
+static void registerPbrSwordMaterialSettings(UserSettings::PbrSwordMaterialSettings& settings) {
+    Register(settings.roughness);
+    Register(settings.metallic);
+    Register(settings.ambientOcclusion);
+    Register(settings.specular);
+    Register(settings.emissiveR);
+    Register(settings.emissiveG);
+    Register(settings.emissiveB);
+    Register(settings.emissiveStrength);
+    Register(settings.useRmaosMap);
+    Register(settings.useLooseMaps);
+    Register(settings.useNormalMap);
+    Register(settings.useEmissiveMap);
+}
+
+static void registerPbrSettings(UserSettings::PbrSettings& settings) {
+    Register(settings.ambient);
+    Register(settings.ambientSpecular);
+    Register(settings.fillIntensity);
+    Register(settings.fillDirX);
+    Register(settings.fillDirY);
+    Register(settings.fillDirZ);
+    Register(settings.diffuseScale);
+    Register(settings.specularScale);
+    Register(settings.normalStrength);
+    Register(settings.flipNormalY);
+    Register(settings.invertNormalHandedness);
+    Register(settings.skyAmbient);
+    Register(settings.groundAmbient);
+    Register(settings.horizonAmbient);
+    Register(settings.environmentTint);
+    Register(settings.useIbl);
+    Register(settings.iblDiffuseStrength);
+    Register(settings.iblSpecularStrength);
+    registerPbrSwordMaterialSettings(settings.ordonSwordBlade);
+    registerPbrSwordMaterialSettings(settings.masterSwordBlade);
 }
 
 void registerSettings() {
@@ -232,6 +319,8 @@ void registerSettings() {
     Register(g_userSettings.backend.graphicsBackend);
     Register(g_userSettings.backend.skipPreLaunchUI);
     Register(g_userSettings.backend.showPipelineCompilation);
+    Register(g_userSettings.backend.enableExperimentalPbr);
+    registerPbrSettings(g_userSettings.backend.pbr);
     Register(g_userSettings.backend.wasPresetChosen);
     Register(g_userSettings.backend.checkForUpdates);
     Register(g_userSettings.backend.cardFileType);

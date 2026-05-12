@@ -71,7 +71,7 @@ public:
     J3DGXColorS10* getTevColor(u32 param_0) { return mTevBlock->getTevColor(param_0); }
     J3DFog* getFog() { return mPEBlock->getFog(); }
     J3DTexMtx* getTexMtx(u32 idx) { return mTexGenBlock->getTexMtx(idx); }
-    u16 getIndex() { return mIndex; }
+    u16 getIndex() const { return mIndex; }
     BOOL isDrawModeOpaTexEdge() { return (mMaterialMode & 3) ? 1 : 0; }
     J3DPEBlock* getPEBlock() { return mPEBlock; }
     void onInvalid() { mInvalid = 1; }

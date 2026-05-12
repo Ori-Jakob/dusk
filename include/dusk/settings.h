@@ -61,6 +61,44 @@ struct ConfigEnumRange<GyroMode> {
 // Persistent user settings
 
 struct UserSettings {
+    struct PbrSwordMaterialSettings {
+        ConfigVar<float> roughness;
+        ConfigVar<float> metallic;
+        ConfigVar<float> ambientOcclusion;
+        ConfigVar<float> specular;
+        ConfigVar<float> emissiveR;
+        ConfigVar<float> emissiveG;
+        ConfigVar<float> emissiveB;
+        ConfigVar<float> emissiveStrength;
+        ConfigVar<bool> useRmaosMap;
+        ConfigVar<bool> useLooseMaps;
+        ConfigVar<bool> useNormalMap;
+        ConfigVar<bool> useEmissiveMap;
+    };
+
+    struct PbrSettings {
+        ConfigVar<float> ambient;
+        ConfigVar<float> ambientSpecular;
+        ConfigVar<float> fillIntensity;
+        ConfigVar<float> fillDirX;
+        ConfigVar<float> fillDirY;
+        ConfigVar<float> fillDirZ;
+        ConfigVar<float> diffuseScale;
+        ConfigVar<float> specularScale;
+        ConfigVar<float> normalStrength;
+        ConfigVar<bool> flipNormalY;
+        ConfigVar<bool> invertNormalHandedness;
+        ConfigVar<float> skyAmbient;
+        ConfigVar<float> groundAmbient;
+        ConfigVar<float> horizonAmbient;
+        ConfigVar<float> environmentTint;
+        ConfigVar<bool> useIbl;
+        ConfigVar<float> iblDiffuseStrength;
+        ConfigVar<float> iblSpecularStrength;
+        PbrSwordMaterialSettings ordonSwordBlade;
+        PbrSwordMaterialSettings masterSwordBlade;
+    };
+
     // Program settings
 
     struct {
@@ -186,6 +224,8 @@ struct UserSettings {
         ConfigVar<std::string> graphicsBackend;
         ConfigVar<bool> skipPreLaunchUI;
         ConfigVar<bool> showPipelineCompilation;
+        ConfigVar<bool> enableExperimentalPbr;
+        PbrSettings pbr;
         ConfigVar<bool> wasPresetChosen;
         ConfigVar<bool> checkForUpdates;
         ConfigVar<int> cardFileType;
