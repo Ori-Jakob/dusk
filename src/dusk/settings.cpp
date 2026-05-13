@@ -126,6 +126,7 @@ UserSettings g_userSettings = {
         .skipPreLaunchUI {"backend.skipPreLaunchUI", false},
         .showPipelineCompilation {"backend.showPipelineCompilation", false},
         .enableExperimentalPbr {"backend.enableExperimentalPbr", false},
+        .enableExperimentalLighting {"backend.enableExperimentalLighting", false},
         .gxFogOverrideEnabled {"backend.gxFogOverrideEnabled", false},
         .gxFogExposure {"backend.gxFogExposure", 1.0f},
         .gxFogOpacity {"backend.gxFogOpacity", 1.0f},
@@ -154,12 +155,37 @@ UserSettings g_userSettings = {
             .groundAmbient {"backend.pbr.groundAmbient", 0.45f},
             .horizonAmbient {"backend.pbr.horizonAmbient", 0.80f},
             .environmentTint {"backend.pbr.environmentTint", 1.0f},
+            .indirectOcclusionStrength {"backend.pbr.indirectOcclusionStrength", 0.35f},
+            .indirectOcclusionHorizon {"backend.pbr.indirectOcclusionHorizon", 0.45f},
+            .indirectOcclusionSpecular {"backend.pbr.indirectOcclusionSpecular", 0.60f},
+            .dynamicGi {"backend.pbr.dynamicGi", false},
+            .dynamicGiStrength {"backend.pbr.dynamicGiStrength", 0.15f},
+            .dynamicGiNormalWrap {"backend.pbr.dynamicGiNormalWrap", 0.35f},
+            .dynamicGiAlbedoInfluence {"backend.pbr.dynamicGiAlbedoInfluence", 0.35f},
             .useIbl {"backend.pbr.useIbl", true},
             .useAuthoredIbl {"backend.pbr.useAuthoredIbl", false},
-            .autoUpdateProbeIbl {"backend.pbr.autoUpdateProbeIbl", false},
+            .periodicProbeRefresh {"backend.pbr.periodicProbeRefresh", false},
+            .localProbeGi {"backend.pbr.localProbeGi", true},
+            .probeCache {"backend.pbr.probeCache", true},
+            .nearestProbeCache {"backend.pbr.nearestProbeCache", true},
+            .nearestProbeMaxDistance {"backend.pbr.nearestProbeMaxDistance", 6000.0f},
+            .spatialProbeBlend {"backend.pbr.spatialProbeBlend", true},
+            .spatialProbeBlendMaxDistance {"backend.pbr.spatialProbeBlendMaxDistance", 8000.0f},
+            .probeBlending {"backend.pbr.probeBlending", true},
+            .probeBlendFrames {"backend.pbr.probeBlendFrames", 45},
             .iblDiffuseStrength {"backend.pbr.iblDiffuseStrength", 1.0f},
             .iblSpecularStrength {"backend.pbr.iblSpecularStrength", 1.0f},
             .debugMode {"backend.pbr.debugMode", static_cast<int>(AURORA_PBR_DEBUG_OFF)},
+            .enhancedLights {"backend.pbr.enhancedLights", false},
+            .enhancedLightCount {"backend.pbr.enhancedLightCount", 4},
+            .enhancedLightFalloff {"backend.pbr.enhancedLightFalloff", PbrEnhancedLightFalloff::LegacyRadius},
+            .enhancedLightIntensity {"backend.pbr.enhancedLightIntensity", 1.0f},
+            .enhancedLightDebug {"backend.pbr.enhancedLightDebug", false},
+            .enhancedShadows {"backend.pbr.enhancedShadows", false},
+            .enhancedShadowMode {"backend.pbr.enhancedShadowMode", PbrEnhancedShadowMode::OverrideDirection},
+            .enhancedShadowMapSize {"backend.pbr.enhancedShadowMapSize", 1024},
+            .enhancedShadowStrength {"backend.pbr.enhancedShadowStrength", 1.0f},
+            .enhancedShadowBias {"backend.pbr.enhancedShadowBias", 0.002f},
             .ordonSwordBlade = {
                 .roughness {"backend.pbr.ordonSwordBlade.roughness", 0.18f},
                 .metallic {"backend.pbr.ordonSwordBlade.metallic", 1.0f},
@@ -231,12 +257,37 @@ static void registerPbrSettings(UserSettings::PbrSettings& settings) {
     Register(settings.groundAmbient);
     Register(settings.horizonAmbient);
     Register(settings.environmentTint);
+    Register(settings.indirectOcclusionStrength);
+    Register(settings.indirectOcclusionHorizon);
+    Register(settings.indirectOcclusionSpecular);
+    Register(settings.dynamicGi);
+    Register(settings.dynamicGiStrength);
+    Register(settings.dynamicGiNormalWrap);
+    Register(settings.dynamicGiAlbedoInfluence);
     Register(settings.useIbl);
     Register(settings.useAuthoredIbl);
-    Register(settings.autoUpdateProbeIbl);
+    Register(settings.periodicProbeRefresh);
+    Register(settings.localProbeGi);
+    Register(settings.probeCache);
+    Register(settings.nearestProbeCache);
+    Register(settings.nearestProbeMaxDistance);
+    Register(settings.spatialProbeBlend);
+    Register(settings.spatialProbeBlendMaxDistance);
+    Register(settings.probeBlending);
+    Register(settings.probeBlendFrames);
     Register(settings.iblDiffuseStrength);
     Register(settings.iblSpecularStrength);
     Register(settings.debugMode);
+    Register(settings.enhancedLights);
+    Register(settings.enhancedLightCount);
+    Register(settings.enhancedLightFalloff);
+    Register(settings.enhancedLightIntensity);
+    Register(settings.enhancedLightDebug);
+    Register(settings.enhancedShadows);
+    Register(settings.enhancedShadowMode);
+    Register(settings.enhancedShadowMapSize);
+    Register(settings.enhancedShadowStrength);
+    Register(settings.enhancedShadowBias);
     registerPbrSwordMaterialSettings(settings.ordonSwordBlade);
     registerPbrSwordMaterialSettings(settings.masterSwordBlade);
 }
@@ -340,6 +391,7 @@ void registerSettings() {
     Register(g_userSettings.backend.skipPreLaunchUI);
     Register(g_userSettings.backend.showPipelineCompilation);
     Register(g_userSettings.backend.enableExperimentalPbr);
+    Register(g_userSettings.backend.enableExperimentalLighting);
     Register(g_userSettings.backend.gxFogOverrideEnabled);
     Register(g_userSettings.backend.gxFogExposure);
     Register(g_userSettings.backend.gxFogOpacity);

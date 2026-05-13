@@ -1,5 +1,6 @@
 #include "dusk/pbr_settings.h"
 
+#include "dusk/lighting/lighting_features.h"
 #include "dusk/settings.h"
 
 #include <aurora/gfx.h>
@@ -63,11 +64,30 @@ void apply_ambient_gradient() {
                                            pbr.horizonAmbient.getValue(), pbr.environmentTint.getValue());
 }
 
+void apply_indirect_occlusion() {
+    const auto& pbr = getSettings().backend.pbr;
+    aurora_set_pbr_indirect_occlusion_params(pbr.indirectOcclusionStrength.getValue(),
+                                             pbr.indirectOcclusionHorizon.getValue(),
+                                             pbr.indirectOcclusionSpecular.getValue());
+}
+
+void apply_dynamic_gi() {
+    const auto& pbr = getSettings().backend.pbr;
+    aurora_set_pbr_dynamic_gi_params(pbr.dynamicGi.getValue(), pbr.dynamicGiStrength.getValue(),
+                                     pbr.dynamicGiNormalWrap.getValue(), pbr.dynamicGiAlbedoInfluence.getValue());
+}
+
 void apply_ibl() {
     const auto& pbr = getSettings().backend.pbr;
     aurora_set_pbr_ibl_source(pbr.useAuthoredIbl.getValue() ? AURORA_PBR_IBL_SOURCE_AUTHORED
                                                             : AURORA_PBR_IBL_SOURCE_PROBE);
-    aurora_set_pbr_probe_auto_refresh(pbr.autoUpdateProbeIbl.getValue());
+    aurora_set_pbr_probe_auto_refresh(pbr.periodicProbeRefresh.getValue());
+    aurora_set_pbr_local_probe_gi(pbr.localProbeGi.getValue());
+    aurora_set_pbr_probe_cache(pbr.probeCache.getValue());
+    aurora_set_pbr_probe_nearest_cache(pbr.nearestProbeCache.getValue(), pbr.nearestProbeMaxDistance.getValue());
+    aurora_set_pbr_probe_spatial_blending(pbr.spatialProbeBlend.getValue(),
+                                          pbr.spatialProbeBlendMaxDistance.getValue());
+    aurora_set_pbr_probe_blending(pbr.probeBlending.getValue(), static_cast<uint32_t>(pbr.probeBlendFrames.getValue()));
     aurora_set_pbr_ibl_params(pbr.useIbl.getValue(), pbr.iblDiffuseStrength.getValue(),
                               pbr.iblSpecularStrength.getValue());
 }
@@ -80,6 +100,23 @@ void apply_fill_direction() {
 void apply_debug() {
     const auto& pbr = getSettings().backend.pbr;
     aurora_set_pbr_debug_mode(static_cast<AuroraPbrDebugMode>(pbr.debugMode.getValue()));
+}
+
+void apply_enhanced_lighting() {
+    const auto& pbr = getSettings().backend.pbr;
+    const auto falloff = pbr.enhancedLightFalloff.getValue() == PbrEnhancedLightFalloff::InverseSquare
+                             ? AURORA_PBR_ENHANCED_LIGHT_FALLOFF_INVERSE_SQUARE
+                             : AURORA_PBR_ENHANCED_LIGHT_FALLOFF_LEGACY_RADIUS;
+    aurora_set_pbr_enhanced_lighting(lighting::enhanced_direct_lights_enabled(), falloff,
+                                     static_cast<uint32_t>(pbr.enhancedLightCount.getValue()),
+                                     pbr.enhancedLightIntensity.getValue(), pbr.enhancedLightDebug.getValue());
+}
+
+void apply_enhanced_shadows() {
+    const auto& pbr = getSettings().backend.pbr;
+    const bool auroraShadowMaps = lighting::aurora_shadow_maps_enabled();
+    aurora_set_pbr_shadow_map_params(auroraShadowMaps, static_cast<uint32_t>(pbr.enhancedShadowMapSize.getValue()),
+                                     pbr.enhancedShadowStrength.getValue(), pbr.enhancedShadowBias.getValue());
 }
 
 void apply_sword_material(pbr_material_override::SwordMaterialKind kind) {
@@ -117,14 +154,18 @@ void save_sword_material(pbr_material_override::SwordMaterialKind kind) {
 }
 
 void apply() {
-    aurora_enable_pbr(getSettings().backend.enableExperimentalPbr.getValue());
+    aurora_enable_pbr(lighting::pbr_material_rendering_enabled());
     apply_lighting();
     apply_material_scales();
     apply_normal();
     apply_ambient_gradient();
+    apply_indirect_occlusion();
+    apply_dynamic_gi();
     apply_ibl();
     apply_fill_direction();
     apply_debug();
+    apply_enhanced_lighting();
+    apply_enhanced_shadows();
     apply_sword_material(pbr_material_override::SwordMaterialKind::Ordon);
     apply_sword_material(pbr_material_override::SwordMaterialKind::Master);
 }
@@ -161,11 +202,36 @@ void reset_ambient_gradient() {
     apply_ambient_gradient();
 }
 
+void reset_indirect_occlusion() {
+    auto& pbr = getSettings().backend.pbr;
+    reset(pbr.indirectOcclusionStrength);
+    reset(pbr.indirectOcclusionHorizon);
+    reset(pbr.indirectOcclusionSpecular);
+    apply_indirect_occlusion();
+}
+
+void reset_dynamic_gi() {
+    auto& pbr = getSettings().backend.pbr;
+    reset(pbr.dynamicGi);
+    reset(pbr.dynamicGiStrength);
+    reset(pbr.dynamicGiNormalWrap);
+    reset(pbr.dynamicGiAlbedoInfluence);
+    apply_dynamic_gi();
+}
+
 void reset_ibl() {
     auto& pbr = getSettings().backend.pbr;
     reset(pbr.useIbl);
     reset(pbr.useAuthoredIbl);
-    reset(pbr.autoUpdateProbeIbl);
+    reset(pbr.periodicProbeRefresh);
+    reset(pbr.localProbeGi);
+    reset(pbr.probeCache);
+    reset(pbr.nearestProbeCache);
+    reset(pbr.nearestProbeMaxDistance);
+    reset(pbr.spatialProbeBlend);
+    reset(pbr.spatialProbeBlendMaxDistance);
+    reset(pbr.probeBlending);
+    reset(pbr.probeBlendFrames);
     reset(pbr.iblDiffuseStrength);
     reset(pbr.iblSpecularStrength);
     apply_ibl();
@@ -183,6 +249,26 @@ void reset_debug() {
     auto& pbr = getSettings().backend.pbr;
     reset(pbr.debugMode);
     apply_debug();
+}
+
+void reset_enhanced_lighting() {
+    auto& pbr = getSettings().backend.pbr;
+    reset(pbr.enhancedLights);
+    reset(pbr.enhancedLightCount);
+    reset(pbr.enhancedLightFalloff);
+    reset(pbr.enhancedLightIntensity);
+    reset(pbr.enhancedLightDebug);
+    apply_enhanced_lighting();
+}
+
+void reset_enhanced_shadows() {
+    auto& pbr = getSettings().backend.pbr;
+    reset(pbr.enhancedShadows);
+    reset(pbr.enhancedShadowMode);
+    reset(pbr.enhancedShadowMapSize);
+    reset(pbr.enhancedShadowStrength);
+    reset(pbr.enhancedShadowBias);
+    apply_enhanced_shadows();
 }
 
 void reset_sword_material(pbr_material_override::SwordMaterialKind kind) {

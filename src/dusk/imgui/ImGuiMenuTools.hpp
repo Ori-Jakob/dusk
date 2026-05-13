@@ -25,7 +25,10 @@ namespace dusk {
         void ShowMapLoader();
         void ShowBloomWindow();
         void ShowPbrWindow();
+        void ShowPbrEnhancedLightingWindow();
+        void ShowLightingSceneEditorWindow();
         void ShowPbrIblOverlay();
+        void ShowLightingSceneOverlay();
         void ShowPlayerInfo();
         void ShowAudioDebug();
         void ShowSaveEditor();
@@ -50,7 +53,10 @@ namespace dusk {
 
         bool m_showBloomWindow = false;
         bool m_showPbrWindow = false;
+        bool m_showPbrEnhancedLightingWindow = false;
+        bool m_showLightingSceneEditorWindow = false;
         bool m_showPbrIblOverlay = false;
+        bool m_showLightingSceneOverlay = false;
         int m_pbrIblOverlayCorner = 1;
 
         bool m_showAudioDebug = false;

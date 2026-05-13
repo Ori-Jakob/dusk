@@ -157,6 +157,8 @@ namespace dusk::config {
     template class ConfigImpl<dusk::DiscVerificationState>;
     template class ConfigImpl<dusk::GameLanguage>;
     template class ConfigImpl<dusk::GyroMode>;
+    template class ConfigImpl<dusk::PbrEnhancedLightFalloff>;
+    template class ConfigImpl<dusk::PbrEnhancedShadowMode>;
 }
 
 void dusk::config::Register(ConfigVarBase& configVar) {

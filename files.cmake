@@ -1414,6 +1414,10 @@ set(DUSK_FILES
         include/dusk/endian_gx.hpp
         include/dusk/config.hpp
         include/dusk/dvd_asset.hpp
+        include/dusk/enhanced_lighting.h
+        include/dusk/lighting/lighting_features.h
+        include/dusk/lighting/light_tuning.h
+        include/dusk/lighting/lighting_scene.h
         include/dusk/pbr_settings.h
         include/dusk/scope_guard.hpp
         src/dusk/dvd_asset.cpp
@@ -1422,6 +1426,7 @@ set(DUSK_FILES
         src/dusk/config.cpp
         src/dusk/crash_reporting.cpp
         src/dusk/endian.cpp
+        src/dusk/enhanced_lighting.cpp
         src/dusk/extras.c
         src/dusk/file_select.cpp
         src/dusk/file_select.hpp
@@ -1429,6 +1434,9 @@ set(DUSK_FILES
         src/dusk/game_clock.cpp
         src/dusk/globals.cpp
         src/dusk/gyro.cpp
+        src/dusk/lighting/lighting_features.cpp
+        src/dusk/lighting/light_tuning.cpp
+        src/dusk/lighting/lighting_scene.cpp
 		src/dusk/gamepad_color.cpp
 		src/dusk/autosave.cpp
         src/dusk/http/http.hpp
@@ -1451,8 +1459,12 @@ set(DUSK_FILES
         src/dusk/imgui/ImGuiMenuGame.hpp
         src/dusk/imgui/ImGuiBloomWindow.cpp
         src/dusk/imgui/ImGuiBloomWindow.hpp
+        src/dusk/imgui/ImGuiLightingTools.cpp
+        src/dusk/imgui/ImGuiLightingTools.hpp
         src/dusk/imgui/ImGuiMenuTools.cpp
         src/dusk/imgui/ImGuiMenuTools.hpp
+        src/dusk/imgui/ImGuiPbrTools.cpp
+        src/dusk/imgui/ImGuiPbrTools.hpp
         src/dusk/imgui/ImGuiActorSpawner.cpp
         src/dusk/imgui/ImGuiProcessOverlay.cpp
         src/dusk/imgui/ImGuiCameraOverlay.cpp

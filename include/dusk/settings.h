@@ -32,6 +32,19 @@ enum class GyroMode : u8 {
     Mouse = 1,
 };
 
+enum class PbrEnhancedLightFalloff : int {
+    LegacyRadius = 0,
+    InverseSquare = 1,
+};
+
+enum class PbrEnhancedShadowMode : int {
+    Original = 0,
+    OverrideDirection = 1,
+    DisableGameShadows = 2,
+    Hybrid = 3,
+    AuroraShadowMaps = 4,
+};
+
 namespace config {
 template <>
 struct ConfigEnumRange<BloomMode> {
@@ -55,6 +68,18 @@ template <>
 struct ConfigEnumRange<GyroMode> {
     static constexpr auto min = GyroMode::Sensor;
     static constexpr auto max = GyroMode::Mouse;
+};
+
+template <>
+struct ConfigEnumRange<PbrEnhancedLightFalloff> {
+    static constexpr auto min = PbrEnhancedLightFalloff::LegacyRadius;
+    static constexpr auto max = PbrEnhancedLightFalloff::InverseSquare;
+};
+
+template <>
+struct ConfigEnumRange<PbrEnhancedShadowMode> {
+    static constexpr auto min = PbrEnhancedShadowMode::Original;
+    static constexpr auto max = PbrEnhancedShadowMode::AuroraShadowMaps;
 };
 }
 
@@ -92,12 +117,37 @@ struct UserSettings {
         ConfigVar<float> groundAmbient;
         ConfigVar<float> horizonAmbient;
         ConfigVar<float> environmentTint;
+        ConfigVar<float> indirectOcclusionStrength;
+        ConfigVar<float> indirectOcclusionHorizon;
+        ConfigVar<float> indirectOcclusionSpecular;
+        ConfigVar<bool> dynamicGi;
+        ConfigVar<float> dynamicGiStrength;
+        ConfigVar<float> dynamicGiNormalWrap;
+        ConfigVar<float> dynamicGiAlbedoInfluence;
         ConfigVar<bool> useIbl;
         ConfigVar<bool> useAuthoredIbl;
-        ConfigVar<bool> autoUpdateProbeIbl;
+        ConfigVar<bool> periodicProbeRefresh;
+        ConfigVar<bool> localProbeGi;
+        ConfigVar<bool> probeCache;
+        ConfigVar<bool> nearestProbeCache;
+        ConfigVar<float> nearestProbeMaxDistance;
+        ConfigVar<bool> spatialProbeBlend;
+        ConfigVar<float> spatialProbeBlendMaxDistance;
+        ConfigVar<bool> probeBlending;
+        ConfigVar<int> probeBlendFrames;
         ConfigVar<float> iblDiffuseStrength;
         ConfigVar<float> iblSpecularStrength;
         ConfigVar<int> debugMode;
+        ConfigVar<bool> enhancedLights;
+        ConfigVar<int> enhancedLightCount;
+        ConfigVar<PbrEnhancedLightFalloff> enhancedLightFalloff;
+        ConfigVar<float> enhancedLightIntensity;
+        ConfigVar<bool> enhancedLightDebug;
+        ConfigVar<bool> enhancedShadows;
+        ConfigVar<PbrEnhancedShadowMode> enhancedShadowMode;
+        ConfigVar<int> enhancedShadowMapSize;
+        ConfigVar<float> enhancedShadowStrength;
+        ConfigVar<float> enhancedShadowBias;
         PbrSwordMaterialSettings ordonSwordBlade;
         PbrSwordMaterialSettings masterSwordBlade;
     };
@@ -228,6 +278,7 @@ struct UserSettings {
         ConfigVar<bool> skipPreLaunchUI;
         ConfigVar<bool> showPipelineCompilation;
         ConfigVar<bool> enableExperimentalPbr;
+        ConfigVar<bool> enableExperimentalLighting;
         ConfigVar<bool> gxFogOverrideEnabled;
         ConfigVar<float> gxFogExposure;
         ConfigVar<float> gxFogOpacity;

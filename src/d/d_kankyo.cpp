@@ -34,6 +34,7 @@
 #include <cstring>
 #if TARGET_PC
 #include "dusk/imgui/ImGuiBloomWindow.hpp"
+#include "dusk/enhanced_lighting.h"
 #include "dusk/settings.h"
 #include "dusk/frame_interpolation.h"
 #endif
@@ -3233,6 +3234,7 @@ void dScnKy_env_light_c::settingTevStruct_plightcol_plus(cXyz* pos_p, dKy_tevstr
 
         light_inf_id = dKy_light_influence_id(*pos_p, 0);
         sp44 = 0;
+        bool enhanced_light_override = false;
 
         if (tevstr_p->Type == 7 || tevstr_p->Type == 1 ||
             ((tevstr_p->Type == 2 || tevstr_p->Type == 6 || tevstr_p->Type == 3) &&
@@ -3256,6 +3258,26 @@ void dScnKy_env_light_c::settingTevStruct_plightcol_plus(cXyz* pos_p, dKy_tevstr
                 sp44 = 1;
             }
         }
+
+#if TARGET_PC
+        cXyz enhanced_light_pos;
+        GXColorS10 enhanced_light_col;
+        f32 enhanced_light_dist;
+        f32 enhanced_light_power;
+        f32 enhanced_light_yuragi;
+        if (dusk::enhanced_lighting::find_blended_light_influence(*pos_p, enhanced_light_pos, enhanced_light_col,
+                                                                  enhanced_light_dist, enhanced_light_power,
+                                                                  enhanced_light_yuragi))
+        {
+            light_pos = enhanced_light_pos;
+            field_0x10f8 = enhanced_light_col;
+            light_dist = enhanced_light_dist;
+            light_power = enhanced_light_power;
+            light_yuragi = enhanced_light_yuragi;
+            sp44 = 1;
+            enhanced_light_override = true;
+        }
+#endif
 
         if (sp44 == 0) {
             light_pos = kankyo->base_light.mPosition;
@@ -3445,7 +3467,7 @@ void dScnKy_env_light_c::settingTevStruct_plightcol_plus(cXyz* pos_p, dKy_tevstr
                 #endif
             }
             }
-        } else {
+        } else if (!enhanced_light_override) {
             light_pos = dKy_light_influence_pos(light_inf_id);
             field_0x10f8 = dKy_light_influence_col(light_inf_id);
             light_yuragi = dKy_light_influence_yuragi(light_inf_id);

@@ -341,10 +341,11 @@ void main01(void) {
 
         const auto pacing = dusk::game_clock::advance_main_loop();
         if (pacing.is_interpolating) {
+            bool allowProbeCapture = false;
             if (pacing.sim_ticks_to_run > 0) {
                 dusk::frame_interp::begin_frame(true, true, 0.0f);
                 dusk::frame_interp::set_ui_tick_pending(true);
-                const bool allowProbeCapture = pacing.sim_ticks_to_run == 1;
+                allowProbeCapture = pacing.sim_ticks_to_run == 1;
                 aurora_set_pbr_probe_capture_enabled(allowProbeCapture);
                 for (int sim_tick = 0; sim_tick < pacing.sim_ticks_to_run; ++sim_tick) {
                     dusk::frame_interp::begin_sim_tick();
@@ -365,8 +366,10 @@ void main01(void) {
             dusk::frame_interp::interpolate();
             dusk::frame_interp::begin_presentation_camera();
             // run draw functions for anything specially marked to handle interp
+            aurora_set_pbr_probe_capture_enabled(allowProbeCapture);
             fpcM_DrawIterater((fpcM_DrawIteraterFunc)fpcM_Draw);
             cAPIGph_Painter();
+            aurora_set_pbr_probe_capture_enabled(false);
             dusk::frame_interp::end_presentation_camera();
             dusk::frame_interp::set_ui_tick_pending(false);
         } else {

@@ -21,6 +21,7 @@
 #include "client/TracyScoped.hpp"
 #include "dusk/frame_interpolation.h"
 #include "dusk/gx_helper.h"
+#include "dusk/enhanced_lighting.h"
 #include "dusk/logging.h"
 
 static const void* getInterpKey(const void* base, int idx) {
@@ -1316,6 +1317,10 @@ u32 dDlst_shadowReal_c::set(u32 i_key, J3DModel* i_model, cXyz* param_2, f32 par
         }
 
 #ifdef TARGET_PC
+        dusk::enhanced_lighting::find_shadow_override_position(*param_2, sp60);
+#endif
+
+#ifdef TARGET_PC
         // provide a stable key for interpolation
         mpModels[0] = i_model;
 #endif
@@ -1680,6 +1685,12 @@ void dDlst_shadowControl_c::draw(Mtx param_0) {
 
 int dDlst_shadowControl_c::setReal(u32 param_1, s8 param_2, J3DModel* param_3, cXyz* param_4,
                                        f32 param_5, f32 param_6, dKy_tevstr_c* param_7) {
+#ifdef TARGET_PC
+    if (dusk::enhanced_lighting::should_suppress_real_shadows()) {
+        return 0;
+    }
+#endif
+
     static Mtx mtx_adj = {
         {0.5f, 0.0f, 0.0f, 0.5f},
         {0.0f, -0.5f, 0.0f, 0.5f},
@@ -1776,6 +1787,12 @@ int dDlst_shadowControl_c::setReal(u32 param_1, s8 param_2, J3DModel* param_3, c
 }
 
 bool dDlst_shadowControl_c::addReal(u32 i_key, J3DModel* param_1) {
+#ifdef TARGET_PC
+    if (dusk::enhanced_lighting::should_suppress_real_shadows()) {
+        return false;
+    }
+#endif
+
     if (i_key == 0) {
         return false;
     }
@@ -1791,6 +1808,12 @@ bool dDlst_shadowControl_c::addReal(u32 i_key, J3DModel* param_1) {
 
 int dDlst_shadowControl_c::setSimple(cXyz* param_0, f32 param_1, f32 param_2, cXyz* param_3,
                                      s16 param_4, f32 param_5, TGXTexObj* param_6) {
+#ifdef TARGET_PC
+    if (dusk::enhanced_lighting::should_suppress_simple_shadows()) {
+        return 0;
+    }
+#endif
+
     if (param_3 == NULL || mSimpleNum >= 128) {
         return 0;
     }

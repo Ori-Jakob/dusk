@@ -28,6 +28,7 @@
 #include "d/d_menu_collect.h"
 #include "d/d_meter2_info.h"
 #include "d/d_s_play.h"
+#include "dusk/enhanced_lighting.h"
 #include "f_ap/f_ap_game.h"
 #include "f_op/f_op_actor_mng.h"
 #include "f_op/f_op_camera_mng.h"
@@ -2220,6 +2221,7 @@ int mDoGph_Painter() {
                 dKy_setLight_again();
             }
 #endif
+            dusk::enhanced_lighting::update_lights_for_current_view();
             GX_DEBUG_GROUP(dComIfGd_drawOpaListSky);
             GX_DEBUG_GROUP(dComIfGd_drawXluListSky);
 
