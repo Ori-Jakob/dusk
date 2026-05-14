@@ -1,5 +1,6 @@
 #pragma once
 
+#include "dusk/lighting/light_tuning.h"
 #include "SSystem/SComponent/c_xyz.h"
 
 #include <cstdint>
@@ -9,16 +10,24 @@ namespace dusk::lighting {
 constexpr uint32_t MaxSceneLights = 128;
 
 enum class SceneLightSource : uint8_t {
+    Base,
     Point,
     Effect,
+};
+
+enum class SceneLightType : uint8_t {
+    Point,
+    Directional,
 };
 
 struct SceneLight {
     uintptr_t stableId = 0;
     SceneLightSource source = SceneLightSource::Point;
+    SceneLightType type = SceneLightType::Point;
     uint32_t sourceIndex = 0;
     const void* sourcePointer = nullptr;
     cXyz worldPosition{};
+    cXyz worldDirection{};
     float color[3] = {};
     float rawColor[3] = {};
     float radius = 1.0f;
@@ -32,7 +41,10 @@ struct SceneLight {
     float referenceAmbientColor[3] = {};
     float tuningAmbientScale = 1.0f;
     float tuningDirectScale = 1.0f;
+    bool positionOverridden = false;
+    bool isFire = false;
     bool castsShadow = true;
+    LightShadowType shadowType = LightShadowType::LocalProjected;
     float shadowPriority = 1.0f;
     float shadowScore = 0.0f;
     bool priority = false;
@@ -41,6 +53,7 @@ struct SceneLight {
 struct SceneLightRegistry {
     SceneLight lights[MaxSceneLights]{};
     uint32_t lightCount = 0;
+    uint32_t baseLightCount = 0;
     uint32_t pointLightCount = 0;
     uint32_t effectLightCount = 0;
     uint32_t rejectedLightCount = 0;

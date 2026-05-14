@@ -143,11 +143,16 @@ struct UserSettings {
         ConfigVar<PbrEnhancedLightFalloff> enhancedLightFalloff;
         ConfigVar<float> enhancedLightIntensity;
         ConfigVar<bool> enhancedLightDebug;
+        ConfigVar<bool> enhancedFireFlicker;
+        ConfigVar<float> enhancedFireFlickerStrength;
+        ConfigVar<float> enhancedFireFlickerSpeed;
         ConfigVar<bool> enhancedShadows;
         ConfigVar<PbrEnhancedShadowMode> enhancedShadowMode;
         ConfigVar<int> enhancedShadowMapSize;
         ConfigVar<float> enhancedShadowStrength;
         ConfigVar<float> enhancedShadowBias;
+        ConfigVar<int> enhancedShadowMaxMaps;
+        ConfigVar<int> enhancedShadowMapsPerFrame;
         PbrSwordMaterialSettings ordonSwordBlade;
         PbrSwordMaterialSettings masterSwordBlade;
     };

@@ -1,6 +1,9 @@
 #include "JSystem/JSystem.h" // IWYU pragma: keep
 
 #include "JSystem/JKernel/JKRSolidHeap.h"
+#if TARGET_PC && defined(_WIN32) && defined(DEBUG)
+#include "dusk/debug_stacktrace.h"
+#endif
 #include "JSystem/JGadget/binary.h"
 #include "JSystem/JUtility/JUTAssert.h"
 #include "JSystem/JUtility/JUTConsole.h"
@@ -160,6 +163,9 @@ void* JKRSolidHeap::allocFromTail(u32 size, int alignment) {
 
 void JKRSolidHeap::do_free(void* ptr) {
     JUTWarningConsole_f("free: cannot free memory block (%08x)\n", ptr);
+#if TARGET_PC && defined(_WIN32) && defined(DEBUG)
+    dusk::LogDebugStackTrace("JKRSolidHeap::do_free", 1);
+#endif
 }
 
 void JKRSolidHeap::do_freeAll(void) {

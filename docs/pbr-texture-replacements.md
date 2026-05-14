@@ -283,8 +283,8 @@ Probe transition blending is stored as
 
 The developer menu also has a PBR debug visualization dropdown stored as `backend.pbr.debugMode`. Modes include albedo,
 roughness, metallic, AO, specular, normal, GX light tint, direct diffuse/specular, IBL diffuse/specular, indirect
-occlusion, and dynamic GI. The debug view only changes draws that are using the experimental PBR path; non-PBR GX draws
-continue to render normally.
+occlusion, dynamic GI, and Aurora shadow visibility. The debug view only changes draws that are using the experimental
+PBR path; non-PBR GX draws continue to render normally.
 
 The developer menu also exposes a `PBR IBL Overlay` under `Debug`. This overlay shows the currently requested and active
 IBL source, runtime probe capture state, capture face, refresh/filter status, probe cache usage, active probe key, probe
@@ -307,6 +307,12 @@ selection behavior for materials that depend on the point-light influence path.
 The enhanced path is opt-in from `Debug > Graphics Settings > PBR Enhanced Lighting` in the ImGui developer menu and
 guarded by config values. The original renderer continues to run unchanged when the option is disabled.
 
+Enhanced lighting and Aurora shadow maps are no longer limited to PBR sidecar materials. Regular lit GX/TEV materials
+keep their original TEV output, then receive a small post-TEV modern-lighting supplement when enhanced direct lights are
+enabled. Regular lit GX/TEV materials can also sample the Aurora shadow map as a receiver darkening pass when enhanced
+shadows use the `aurora_shadow_maps` path. This is intentionally simpler than the PBR path, but it lets stock textures
+receive modern light and shadow influence without requiring texture replacements.
+
 Implemented settings:
 
 - `backend.pbr.enhancedLights`: enable enhanced direct-light collection for PBR materials.
@@ -314,9 +320,15 @@ Implemented settings:
 - `backend.pbr.enhancedLightFalloff`: select original GX-style attenuation or inverse-square attenuation.
 - `backend.pbr.enhancedLightIntensity`: global intensity scale for enhanced direct lights.
 - `backend.pbr.enhancedLightDebug`: expose selected light count and strongest-light data in the PBR debug window.
-- `backend.pbr.enhancedShadows`: enable enhanced shadow behavior.
-- `backend.pbr.enhancedShadowMode`: currently supports `original`, `override_direction`, `disable_game_shadows`,
-  `hybrid`, and `aurora_shadow_maps`.
+- `backend.pbr.enhancedFireFlicker`: enable deterministic intensity flicker for lights marked `isFire` in lighting JSON.
+- `backend.pbr.enhancedFireFlickerStrength`: global amplitude for fire-light flicker.
+- `backend.pbr.enhancedFireFlickerSpeed`: global playback speed for fire-light flicker.
+- `backend.pbr.enhancedShadows`: opt into enhanced shadow behavior. When this is `false`, the original game shadow
+  renderer is left untouched.
+- `backend.pbr.enhancedShadowMode`: selects the enhanced shadow path while enhanced shadows are enabled. `original`
+  remains accepted for old configs but is treated as `aurora_shadow_maps` when the enhanced-shadow toggle is on; disabling
+  enhanced shadows is the supported way to use original shadows. Active modes are `aurora_shadow_maps`, `hybrid`,
+  `override_direction`, and `disable_game_shadows`.
 - `backend.pbr.enhancedShadowMapSize`: requested Aurora shadow-map depth texture size.
 - `backend.pbr.enhancedShadowStrength`: receiver-side strength for Aurora shadow-map sampling.
 - `backend.pbr.enhancedShadowBias`: receiver-side depth bias for Aurora shadow-map sampling.
@@ -334,9 +346,17 @@ Implemented direct-light slice:
   preservation.
 - Legacy radius falloff and inverse-square falloff are both available. This is direct-light attenuation only; it is not
   full GI.
+- The ImGui light editor can save per-room light rules under `texture_replacements/lighting/<stage>/room_<room>.json`.
+  Light rules can override `position` as a world-space `[x, y, z]` value and can mark a light with `isFire` metadata for
+  optional fire-light flicker.
+- Light rules can also set `shadowType` to `none`, `local_projected`, `directional`, or `point`. The current Aurora
+  renderer stores a ranked atlas-facing request list and renders queued non-point requests into separate layers of a
+  small shadow texture array. Enhanced PBR and regular GX/TEV receiver paths can sample the matching atlas layer for
+  shadow-tagged lights; point-light cubemap shadows are future work.
 
 Implemented shadow-direction slice:
 
+- When enhanced shadows are disabled, Dusk leaves the original real-shadow and simple/contact-shadow paths untouched.
 - When enhanced shadows are enabled and `enhancedShadowMode` is `override_direction`, Dusk keeps the original real-shadow
   renderer but asks the enhanced light collector for the dominant light around the shadow receiver position.
 - The selected world-space light position replaces the temporary source passed into `dDlst_shadowReal_c::setShadowRealMtx()`.
@@ -348,8 +368,8 @@ Planned shadow modes:
 - `disable_game_shadows`: implemented; suppresses original real shadows and simple/contact shadows while enhanced shadows
   are active.
 - `hybrid`: implemented; suppresses original real shadows while keeping original simple/contact shadows.
-- `aurora_shadow_maps`: in progress; suppresses original real shadows and routes PBR receivers through Aurora's
-  shadow-map slot.
+- `aurora_shadow_maps`: implemented first pass; suppresses original real shadows, renders one Aurora-owned depth map,
+  and lets PBR receivers sample it.
 
 Implementation phases:
 
@@ -367,13 +387,46 @@ Implementation phases:
 5. Done: add game-shadow suppression modes. `disable_game_shadows` skips original real and simple shadow submission while
    enhanced shadows are active. `hybrid` skips original real shadows but keeps simple/contact shadows.
 6. Done: add the Aurora shadow-map handoff. `aurora_shadow_maps` is exposed in the debug menu, persists map size/strength/
-   bias settings, suppresses original real shadows, and gives Aurora a uniform matrix, C API, and status overlay. Depth
-   texture creation, comparison sampler bindings, and receiver sampling are deferred until the caster pass exists.
-7. Next: populate the Aurora shadow map. Start with one dominant directional/spot-style light and a depth-only caster pass,
-   then expand to an atlas for multiple lights. Point lights should come later because cubemap shadow maps multiply render
-   cost. The runtime probe replay work is a useful reference, but shadow maps still need caster filtering, depth-only
-   pipeline variants, light view/projection matrix construction, and cache/update rules.
-8. In progress: treat GI as an extension of the existing IBL/probe work. True GI is indirect bounce lighting;
+   bias settings, suppresses original real shadows, and gives Aurora a C API, depth texture, comparison sampler,
+   light-space matrix, and status overlay.
+7. Done: populate the first Aurora shadow map with a depth-only caster replay pass. Aurora clones eligible perspective GX
+   draws, patches their uniforms into the selected light's view/projection, renders them into the shadow depth target
+   before the normal frame, and exposes the replay draw count in the status overlay.
+8. Done: sample the Aurora shadow map in PBR receivers. The PBR material bind group now includes a depth texture and
+   comparison sampler, the shader projects receiver fragments into the shadow light's clip space, and direct diffuse/
+   specular are attenuated by the configured shadow strength. Receiver sampling uses a small 3x3 tent PCF filter to
+   soften hard depth-test edges.
+9. Done: associate the first shadow map with the selected enhanced scene light. When enhanced direct lights are active,
+   Aurora tags the matching light in the GPU light buffer and applies the shadow factor only to that light's direct
+   diffuse/specular contribution. Legacy GX/fallback direct lighting still uses the single global shadow factor.
+10. Done: cache the single Aurora shadow map. Captures now refresh when the selected light changes, the light/source moves
+   enough, the receiver target moves enough, or the map settings change. Failed zero-draw captures retry slowly instead
+   of every frame, and the previous map is no longer invalidated at capture start.
+11. Done: add regular GX/TEV receiver support. Lit non-PBR materials now use the enhanced light buffer for a restrained
+   diffuse lift and sample the Aurora shadow map through a weighted receiver bridge. The bridge only darkens the original
+   TEV result in proportion to the selected shadow light's local contribution, avoiding full-room shadow decals. PBR
+   remains the higher-quality material path; the non-PBR pass is a compatibility bridge for stock textures.
+12. In progress: expand the single-map path into an atlas. Aurora now allocates a four-layer shadow depth texture array,
+   creates per-slot render views, renders each queued non-point shadow request into its own layer, and reports requested
+   and captured slot counts in the status overlay. Enhanced lights carry their captured atlas slot into the GPU light
+   buffer, and PBR plus regular GX/TEV receiver paths sample the matching depth-array layer. Point lights should come
+   later because cubemap shadow maps multiply render cost. Remaining work is caster filtering/tuning, PCF/quality
+   controls, atlas debug views, broader blending controls, and cache/update rules.
+   Shadow caster replay uses a shadow-safe texture bind group: material textures remain available for depth-only caster
+   shaders, but the PBR shadow receiver texture slots are replaced with fallback views. WebGPU requires this because the
+   same shadow depth texture cannot be sampled as a `TextureBinding` while another layer of it is written as a
+   `RenderAttachment` in the same command encoder synchronization scope.
+   The shadow status panel lists request, captured, and pending masks plus the source/type/score/priority for each active
+   atlas slot, and `Refresh Shadow Atlas` can manually requeue all active slots after editing light tuning.
+   Receiver sampling also fades local projected shadows near their projection/depth bounds, which helps hide hard atlas
+   projection edges while the caster filtering and projection tuning are still being refined.
+   Shadow caster pipelines are alpha-aware: when a GX material uses alpha compare, the depth-only caster variant keeps a
+   no-color fragment stage so cutout pixels can discard instead of casting a solid card silhouette.
+   Shadow request assignment is stabilized across frames; existing shadow lights keep their relative atlas order while
+   they remain active, which avoids rapid slot swaps when nearby lights have similar scores.
+   Shadow diagnostics include per-slot draw counts in ImGui and explicit per-slot RenderDoc debug markers around Aurora's
+   shadow capture render passes.
+13. In progress: treat GI as an extension of the existing IBL/probe work. True GI is indirect bounce lighting;
    inverse-square falloff only fixes direct lights. Local-probe GI keeps stale scene probes active during transitions,
    the runtime probe cache keeps four processed stage/room probes available for quick reuse, nearest same-stage probe
    fallback gives uncaptured rooms a better temporary indirect source, probe transition blending avoids hard cubemap
@@ -382,11 +435,10 @@ Implementation phases:
    path from here is authored probe volumes, then richer per-object or probe-grid weighting, and later screen-space or
    voxel/probe-grid experiments if the cost is acceptable.
 
-Recommended order from here is authored probe volumes, then the Aurora depth-only caster pass, then multi-light shadow
-atlases.
-The completed direct-light, shadow-direction, suppression, shadow-map handoff, local-probe GI, and runtime probe cache
-passes fix the immediate "only the closest light affects PBR/shadows/indirect response" problem before taking on the
-larger shadow-map population and multi-probe GI work.
+Recommended order from here is authored probe volumes, then multi-light shadow atlases.
+The completed direct-light, shadow-direction, suppression, shadow-map handoff/first receiver pass, local-probe GI, and
+runtime probe cache passes fix the immediate "only the closest light affects PBR/shadows/indirect response" problem
+before taking on the larger shadow-map population and multi-probe GI work.
 
 Current limitations:
 
@@ -394,8 +446,12 @@ Current limitations:
 - Runtime probe filtering uses a fixed-sample GPU approximation, not an offline-quality prefilter.
 - Indirect occlusion is material/normal driven only; full SSAO/GTAO or geometric occlusion is not implemented yet.
 - Built-in untextured material overrides are limited to known material targets.
-- Aurora shadow-map settings/status are wired, but depth resources, receiver sampling, and the caster pass are not active
-  yet.
+- Aurora shadow maps currently render up to four non-point shadow requests into a depth texture array. Enhanced direct
+  lights can sample their matching atlas slot, but point-light cubemap shadows and atlas debug texture views are not
+  implemented yet.
+- Shadow capture uses a synchronization-safe bind group that avoids sampling the live shadow receiver atlas while the
+  atlas is being refreshed. If a future shadow feature needs additional caster material data, it should use this
+  shadow-safe bind group path rather than rebinding the live receiver shadow views.
 - Dynamic local GI is light-driven and shader-local. It provides dynamic bounce color, but it does not ray march,
   voxelize, or trace scene geometry yet.
 - Enhanced shadow direction currently affects real shadows only; simple/contact shadows still use the original path unless

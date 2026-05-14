@@ -49,6 +49,7 @@
 #include "SSystem/SComponent/c_API.h"
 #include "dusk/app_info.hpp"
 #include "dusk/crash_reporting.h"
+#include "dusk/debug_stacktrace.h"
 #include "dusk/dusk.h"
 #include "dusk/frame_interpolation.h"
 #include "dusk/game_clock.h"
@@ -81,6 +82,7 @@
 #include "dusk/audio/DuskDsp.hpp"
 #include "dusk/config.hpp"
 #include "dusk/io.hpp"
+#include "dusk/lighting/lighting_features.h"
 #include "dusk/pbr_settings.h"
 #include "dusk/settings.h"
 #include "dusk/version.hpp"
@@ -240,8 +242,11 @@ static void update_pbr_ibl_scene() {
 
 static void update_pbr_probe_camera() {
     const auto& settings = dusk::getSettings();
-    if (!settings.backend.enableExperimentalPbr.getValue() || !settings.backend.pbr.useIbl.getValue() ||
-        settings.backend.pbr.useAuthoredIbl.getValue()) {
+    const bool needsRuntimeProbeCamera = settings.backend.enableExperimentalPbr.getValue() &&
+                                         settings.backend.pbr.useIbl.getValue() &&
+                                         !settings.backend.pbr.useAuthoredIbl.getValue();
+    const bool needsShadowCamera = dusk::lighting::aurora_shadow_maps_enabled();
+    if (!needsRuntimeProbeCamera && !needsShadowCamera) {
         return;
     }
 
@@ -747,6 +752,7 @@ int game_main(int argc, char* argv[]) {
     dusk::ConfigPath = calculate_config_path();
     const auto startupLogLevel = static_cast<AuroraLogLevel>(parsed_arg_options["log-level"].as<uint8_t>());
     dusk::InitializeFileLogging(dusk::ConfigPath, startupLogLevel);
+    dusk::InstallDebugCrashDiagnostics();
 
     dusk::config::LoadFromUserPreferences();
     ApplyCVarOverrides(parsed_arg_options["cvar"]);

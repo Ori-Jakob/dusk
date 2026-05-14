@@ -45,25 +45,46 @@ The current experimental lighting work already has useful pieces:
 - Storage-backed enhanced PBR light upload, so the current direct-light list is submitted once per rendered view and
   consumed from GPU storage by PBR shaders.
 - Runtime probe capture, filtering, caching, scene/room reuse, nearest cached probe fallback, and probe transition blending.
-- Dusk-side enhanced light extraction from `g_env_light.pointlight` and `g_env_light.efplight`.
+- Dusk-side enhanced light extraction from `g_env_light.base_light`, `g_env_light.pointlight`, and
+  `g_env_light.efplight`. The base light is treated as a conservative synthetic directional environment/key light
+  because the original game stores it as a direction anchor with zero power.
 - A first `dusk::lighting` scene registry that stores active point/effect lights with stable source IDs, source metadata,
   reference distance, selection score, receiver-relative ambient contribution metrics, accumulated ambient color, a
-  compatibility centroid, and ImGui inventory display.
+  compatibility centroid, light type metadata, and ImGui inventory display.
 - An initial Aurora `aurora_set_scene_lights(...)` API bridge. Dusk now submits the full tracked enhanced scene-light
   list with source metadata, while Aurora clamps that feed to the active GPU light budget and adapts it into the existing
-  storage-backed PBR light buffer until the clustered/Forward+ path is ready.
+  storage-backed PBR light buffer until the clustered/Forward+ path is ready. The bridge now preserves point versus
+  directional light type and uploads directional vectors for the synthetic environment key.
 - A first file-backed lighting tuning layer loaded from `texture_replacements/lighting`. It supports neutral-by-default
   global, stage, and room JSON overrides for enhanced ambient scale, enhanced direct-light scale, scene-light activation
   distance, and per-light color/intensity/radius rules.
 - A first ImGui light editor for the current stage/room. It can select detected scene lights, apply per-light tuning live,
   and save the selected light rule or activation distance policy to the room JSON file under
   `texture_replacements/lighting/<stage>/room_<room>.json`.
+- Per-light `isFire` metadata authored through the light editor now drives optional runtime fire flicker for enhanced
+  scene lights. The effect is deterministic per stable light ID, scales by the original light fluctuation value when one
+  exists, and is controlled by global strength/speed debug-menu settings.
 - Per-light shadow-caster policy can now be authored through the same tuning path using `castsShadows` and
-  `shadowPriority`. Override-direction shadows use the chosen shadow source when one is available, and the lighting
-  overlay/inventory expose that source.
+  `shadowPriority`. It also supports `shadowType` (`none`, `local_projected`, `directional`, or `point`) so local
+  projected 2D shadows can be the default before expensive point-light cubemap shadows exist. Override-direction shadows
+  use the chosen shadow source when one is available, and the lighting overlay/inventory expose that source.
+- Enhanced shadows now have a single ownership rule: disabled means the original game shadow renderer is untouched,
+  while enabled selects an enhanced path such as Aurora shadow maps, hybrid contact shadows, direction override, or full
+  original-shadow suppression. Legacy `original` config values are accepted but normalized to Aurora shadow maps when the
+  enhanced-shadow toggle is on.
 - Dusk now submits the selected shadow light to Aurora as a shadow-map request containing source metadata, world-space
   position, target position, color, radius, score, and priority. This is the handoff the future Aurora shadow atlas will
   consume.
+- Dusk also submits a ranked list of shadow requests. Aurora stores the list as atlas-facing descriptors and renders
+  renderable non-point requests into separate layers of a small shadow texture array. Receivers can sample the matching
+  captured slot for each enhanced light.
+- Aurora shadow capture uses a shadow-safe material texture bind group. It preserves normal material texture bindings for
+  depth-only/alpha-tested caster replay, but replaces the receiver shadow-map bindings with the fallback shadow view.
+  This is required by WebGPU: the same shadow depth texture cannot be written as a render attachment and sampled as a
+  texture binding in the same command encoder synchronization scope.
+- Aurora shadow-map status now reports request, captured, and pending masks plus the per-slot request metadata used by
+  the atlas. The ImGui shadow controls also have a manual refresh button so stale or edited light requests can be forced
+  back through the atlas capture path without restarting.
 - A first world-space lighting scene overlay that projects active scene lights over the game view, draws their influence
   radii, highlights priority/dominant ambient lights, and marks the accumulated ambient centroid.
 - Experimental additive ambient-light override for the original point-light influence path.
@@ -201,7 +222,7 @@ Tasks:
 
 Acceptance criteria:
 
-- In any room, we can see all active original point/effect lights in ImGui.
+- In any room, we can see the active base/environment key plus original point/effect lights in ImGui.
 - We can tell which lights are stage-authored, actor-authored, effect-authored, or fallback/environment.
 - No rendering behavior changes are required in this phase.
 
@@ -238,14 +259,16 @@ Why clustered forward:
 
 Tasks:
 
-- Replace the fixed 8-light PBR uniform block with a storage buffer of scene lights.
+- Replace the fixed 8-light PBR uniform block with a storage buffer of scene lights. A storage-backed buffer exists for
+  the current enhanced light feed; the remaining work is to promote it from a flat shader loop into clustered/Forward+
+  assignment.
 - Upload all plausible scene/room lights to the GPU with only coarse CPU filtering.
 - Add a simple GPU light-list path before doing expensive CPU-side per-draw culling.
 - Add Forward+ clusters early: build a screen/depth cluster grid and assign light indices to clusters on the GPU.
 - Keep CPU-culling only as a fallback/debug path, not the target architecture.
 - Support light types:
-  - Directional light for sun/moon/environment key.
-  - Point lights from original point/effect lights.
+  - Directional light for sun/moon/environment key. Initial directional upload exists for `base_light`.
+  - Point lights from original point/effect lights. Initial point upload exists for `pointlight` and `efplight`.
   - Spot lights for future authored overrides.
   - Optional capsule/area approximations for large glowing objects.
 - Add physically plausible attenuation options:
@@ -295,7 +318,8 @@ Tasks:
 
 Acceptance criteria:
 
-- Enhanced shadow mode can render at least one Aurora shadow map on PBR receivers.
+- Disabling enhanced shadows leaves original game shadows untouched; enabling enhanced shadows activates an enhanced
+  shadow path and can render at least one Aurora shadow map on PBR receivers.
 - Old real shadows can be suppressed without leaving characters completely ungrounded.
 - Shadow source changes are stable, debounced, and visible in debug UI.
 
@@ -510,7 +534,10 @@ Example:
       "directScale": 1.4,
       "castsShadows": true,
       "shadowPriority": 2.0,
-      "colorScale": [1.0, 0.85, 0.7]
+      "shadowType": "local_projected",
+      "colorScale": [1.0, 0.85, 0.7],
+      "position": [-375.0, 2305.0, 17250.0],
+      "isFire": true
     },
     {
       "source": "effect",
@@ -553,14 +580,45 @@ Exit criteria:
 
 ### Milestone 4: Implement Aurora Shadow Maps
 
-- Create shadow atlas resources.
-- Render depth-only caster pass for one high-priority light.
-- Sample shadow factor in PBR receivers.
-- Add atlas debug view.
+- Done: create the first Aurora-owned shadow depth target, comparison sampler, selected-light request, light-space
+  matrix, and status overlay.
+- Done: render a depth-only caster replay pass for one selected high-priority light.
+- Done: sample the first Aurora shadow map in PBR receivers with a small GPU-side PCF filter.
+- Done: associate the first shadow map with the selected enhanced scene light so only that light's direct PBR contribution
+  is shadowed when enhanced lights are active.
+- Done: cache the first shadow map and refresh it only when the selected light/target moves enough or settings change.
+  Zero-draw captures retry slowly so empty frames do not cause a constant recapture loop.
+- Done: add a regular GX/TEV receiver bridge. Lit non-PBR materials preserve their TEV output, then sample the Aurora
+  shadow map through a local light-weighted darkening pass and receive a restrained enhanced-light diffuse lift.
+- Done: promote the one-light shadow handoff into an atlas-facing request list. Dusk ranks up to four shadow requests
+  from per-light tuning, including shadow type and atlas slot metadata.
+- Done: start the real Aurora shadow atlas. Aurora now allocates a four-layer depth texture array, creates per-layer
+  render views, renders each queued non-point request into its own slot, and exposes captured-slot counts in the debug
+  status. The current receiver shader still samples the active slot only.
+- Done: add receiver-side atlas slot selection for enhanced lights. Aurora binds the shadow target as a depth texture
+  array, uploads one shadow matrix per atlas slot, tags enhanced lights with their captured slot, and samples the matching
+  layer in PBR and regular GX/TEV receiver paths. Legacy fallback lighting still uses the active slot.
+- Done: add shadow-capture synchronization safety. Shadow caster replay now uses a separate shadow-safe bind group that
+  keeps material textures available but binds fallback views for the PBR shadow receiver slots, avoiding WebGPU
+  `TextureBinding|RenderAttachment` validation errors when a shadow map is refreshed and sampled in the same frame.
+- Done: add first atlas diagnostics. The shadow status panel lists every active atlas slot, whether it has a request,
+  whether it has been captured, whether it is pending refresh, and which source/type/score/priority produced it. A
+  manual `Refresh Shadow Atlas` button requeues all active shadow slots.
+- Done: add receiver-side projection edge fading. Local projected shadow-map slots now fade out near their projection
+  bounds and near/far depth bounds so the atlas projection itself is less likely to appear as a hard rectangular shadow.
+- Done: make the shadow caster pipeline alpha-aware. Depth-only shadow caster variants can now keep a fragment stage when
+  GX alpha compare is active, so cutout materials can discard pixels instead of casting solid rectangular silhouettes.
+- Done: stabilize shadow request assignment. Active shadow lights keep their relative atlas order while they remain in the
+  submitted request set, so similarly scored nearby lights do not constantly swap shadow slots and snap projection
+  direction.
+- Done: expand atlas diagnostics. The shadow status panel now reports per-slot draw counts, and Aurora labels shadow
+  capture render passes with explicit per-slot debug markers for RenderDoc inspection.
+- Refine caster filtering and receiver bias/quality controls.
+- Add atlas debug views and broader multi-light blending controls.
 
 Exit criteria:
 
-- `aurora_shadow_maps` produces visible shadows without original real shadows.
+- `aurora_shadow_maps` produces visible PBR receiver shadows without original real shadows.
 
 ### Milestone 5: Add Probe Volumes
 
@@ -629,9 +687,9 @@ All features should expose status counters before being treated as usable.
 ## Immediate Next Steps
 
 1. Add a Forward+/clustered GPU light-selection prototype on top of the scene-light API.
-2. Start the Aurora shadow atlas with one depth-only shadow-casting light.
-3. Expand the lighting scene overlay with actual Aurora shadow-caster selection once the shadow atlas owns caster choice.
-4. Expand lighting tuning files with per-light rules, shadow priority, and color/intensity remaps.
+2. Expand the lighting scene overlay with actual Aurora shadow-atlas slot visualization.
+3. Add atlas debug texture views and per-light shadow quality controls.
+4. Refine caster filtering, receiver bias, and shadow update budgets.
 
 This sequence removes the remaining single-light behavior first, then builds the renderer pieces needed for modern direct
 lighting, shadows, and GI.

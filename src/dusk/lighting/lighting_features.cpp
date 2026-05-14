@@ -22,10 +22,19 @@ bool enhanced_shadows_enabled() {
     return settings.backend.enableExperimentalLighting.getValue() && settings.backend.pbr.enhancedShadows.getValue();
 }
 
+PbrEnhancedShadowMode effective_enhanced_shadow_mode() {
+    const PbrEnhancedShadowMode mode = getSettings().backend.pbr.enhancedShadowMode.getValue();
+    if (mode == PbrEnhancedShadowMode::Original) {
+        return PbrEnhancedShadowMode::AuroraShadowMaps;
+    }
+
+    return mode;
+}
+
 bool aurora_shadow_maps_enabled() {
     const auto& settings = getSettings();
     return settings.backend.enableExperimentalLighting.getValue() && settings.backend.pbr.enhancedShadows.getValue() &&
-           settings.backend.pbr.enhancedShadowMode.getValue() == PbrEnhancedShadowMode::AuroraShadowMaps;
+           effective_enhanced_shadow_mode() == PbrEnhancedShadowMode::AuroraShadowMaps;
 }
 
 }  // namespace dusk::lighting

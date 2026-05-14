@@ -12,6 +12,13 @@ namespace dusk::lighting {
 inline constexpr float DefaultSelectionRadiusScale = 2.5f;
 inline constexpr float DefaultSelectionRadiusPadding = 1500.0f;
 
+enum class LightShadowType : uint8_t {
+    None,
+    LocalProjected,
+    Directional,
+    Point,
+};
+
 struct LightTuningScale {
     bool enabled = true;
     float ambientScale = 1.0f;
@@ -21,7 +28,11 @@ struct LightTuningScale {
     float scoreScale = 1.0f;
     bool castsShadows = true;
     float shadowPriority = 1.0f;
+    LightShadowType shadowType = LightShadowType::LocalProjected;
     std::array<float, 3> colorScale = {1.0f, 1.0f, 1.0f};
+    bool hasPositionOverride = false;
+    std::array<float, 3> position = {};
+    bool isFire = false;
 };
 
 struct LightTuningRule {
@@ -29,6 +40,9 @@ struct LightTuningRule {
     int sourceIndex = -1;
     bool setEnabled = false;
     bool setCastsShadows = false;
+    bool setShadowType = false;
+    bool setPositionOverride = false;
+    bool setIsFire = false;
     LightTuningScale scale{};
 };
 

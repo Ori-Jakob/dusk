@@ -10,6 +10,7 @@
 #include "dusk/config.hpp"
 #include "dusk/io.hpp"
 #include "dusk/lighting/light_tuning.h"
+#include "dusk/lighting/lighting_features.h"
 #include "dusk/lighting/lighting_scene.h"
 #include "dusk/pbr_settings.h"
 #include "dusk/settings.h"
@@ -17,6 +18,7 @@
 #include "m_Do/m_Do_lib.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <string>
 
@@ -27,14 +29,53 @@ constexpr const char* PbrEnhancedLightFalloffLabels[] = {
     "Inverse Square",
 };
 
-constexpr const char* PbrEnhancedShadowModeLabels[] = {
-    "Original",
-    "Override Direction",
-    "Disable Game Shadows",
-    "Hybrid Contact Shadows",
-    "Aurora Shadow Maps",
+struct ShadowModeOption {
+    dusk::PbrEnhancedShadowMode mode;
+    const char* label;
 };
 
+constexpr ShadowModeOption PbrEnhancedShadowModeOptions[] = {
+    {dusk::PbrEnhancedShadowMode::AuroraShadowMaps, "Aurora Shadow Maps"},
+    {dusk::PbrEnhancedShadowMode::Hybrid, "Hybrid Contact Shadows"},
+    {dusk::PbrEnhancedShadowMode::OverrideDirection, "Override Original Direction"},
+    {dusk::PbrEnhancedShadowMode::DisableGameShadows, "Suppress Original Shadows"},
+};
+
+struct LightShadowTypeOption {
+    dusk::lighting::LightShadowType type;
+    const char* label;
+};
+
+constexpr LightShadowTypeOption LightShadowTypeOptions[] = {
+    {dusk::lighting::LightShadowType::None, "None"},
+    {dusk::lighting::LightShadowType::LocalProjected, "Local Projected"},
+    {dusk::lighting::LightShadowType::Directional, "Directional"},
+    {dusk::lighting::LightShadowType::Point, "Point Cubemap Later"},
+};
+
+int ShadowModeOptionIndex(dusk::PbrEnhancedShadowMode mode) {
+    for (int i = 0; i < IM_ARRAYSIZE(PbrEnhancedShadowModeOptions); ++i) {
+        if (PbrEnhancedShadowModeOptions[i].mode == mode) {
+            return i;
+        }
+    }
+
+    return 0;
+}
+
+int LightShadowTypeOptionIndex(dusk::lighting::LightShadowType type) {
+    for (int i = 0; i < IM_ARRAYSIZE(LightShadowTypeOptions); ++i) {
+        if (LightShadowTypeOptions[i].type == type) {
+            return i;
+        }
+    }
+
+    return 1;
+}
+
+const char* LightShadowTypeLabel(dusk::lighting::LightShadowType type) {
+    return LightShadowTypeOptions[LightShadowTypeOptionIndex(type)].label;
+}
 
 const char* PbrIblSourceLabel(AuroraPbrIblSource source) {
     switch (source) {
@@ -55,12 +96,29 @@ const char* EnabledLabel(bool enabled) {
 
 const char* AuroraSceneLightSourceLabel(uint32_t source) {
     switch (source) {
+    case AURORA_SCENE_LIGHT_SOURCE_GAME_ENVIRONMENT:
+        return "environment";
     case AURORA_SCENE_LIGHT_SOURCE_GAME_POINT:
         return "point";
     case AURORA_SCENE_LIGHT_SOURCE_GAME_EFFECT:
         return "effect";
     case AURORA_SCENE_LIGHT_SOURCE_AUTHORED:
         return "authored";
+    default:
+        return "unknown";
+    }
+}
+
+const char* AuroraShadowTypeLabel(uint32_t type) {
+    switch (type) {
+    case AURORA_PBR_SHADOW_TYPE_NONE:
+        return "none";
+    case AURORA_PBR_SHADOW_TYPE_LOCAL_PROJECTED:
+        return "local projected";
+    case AURORA_PBR_SHADOW_TYPE_DIRECTIONAL:
+        return "directional";
+    case AURORA_PBR_SHADOW_TYPE_POINT:
+        return "point cubemap";
     default:
         return "unknown";
     }
@@ -117,8 +175,32 @@ void SelectLightForEditing(const dusk::lighting::SceneLight& light,
     sLightEditor.selectedRule.setCastsShadows = true;
     sLightEditor.selectedRule.scale =
         dusk::lighting::light_tuning_for_source(tuning, source, light.sourceIndex);
+    sLightEditor.selectedRule.scale.shadowType = light.shadowType;
+    sLightEditor.selectedRule.setPositionOverride = sLightEditor.selectedRule.scale.hasPositionOverride;
+    if (!sLightEditor.selectedRule.scale.hasPositionOverride) {
+        sLightEditor.selectedRule.scale.position = {light.worldPosition.x, light.worldPosition.y,
+                                                    light.worldPosition.z};
+    }
+    sLightEditor.selectedRule.setIsFire = sLightEditor.selectedRule.scale.isFire;
     sLightEditor.hasSelection = true;
     sLightEditor.status.clear();
+}
+
+const dusk::lighting::SceneLight* FindSelectedLight(const dusk::lighting::SceneLightRegistry& registry) {
+    if (!sLightEditor.hasSelection) {
+        return nullptr;
+    }
+
+    for (uint32_t i = 0; i < registry.lightCount; ++i) {
+        const auto& light = registry.lights[i];
+        if (sLightEditor.selectedSource == dusk::lighting::scene_light_source_name(light.source) &&
+            sLightEditor.selectedIndex == static_cast<int>(light.sourceIndex))
+        {
+            return &light;
+        }
+    }
+
+    return nullptr;
 }
 
 void ApplySelectedLightRuleLive() {
@@ -184,8 +266,10 @@ void DrawLightingSceneInventoryContents() {
     }
     const auto& tuning = dusk::lighting::current_lighting_tuning(stage, dComIfGp_roomControl_getStayNo());
     dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Registry valid:   {}\n"), EnabledLabel(registry.valid)));
-    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Lights:           {} point, {} effect, {} total\n"),
-                                    registry.pointLightCount, registry.effectLightCount, registry.lightCount));
+    dusk::ImGuiStringViewText(
+        fmt::format(FMT_STRING("Lights:           {} base, {} point, {} effect, {} total\n"),
+                    registry.baseLightCount, registry.pointLightCount, registry.effectLightCount,
+                    registry.lightCount));
     dusk::ImGuiStringViewText(
         fmt::format(FMT_STRING("Rejected/culling: {}\n"), registry.rejectedLightCount));
     dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Reference:        {:.1f}, {:.1f}, {:.1f}\n"),
@@ -223,7 +307,7 @@ void DrawLightingSceneInventoryContents() {
                                         shadow.sourceIndex, shadow.shadowScore));
     }
 
-    if (!ImGui::BeginTable("LightingSceneInventoryTable", 16,
+    if (!ImGui::BeginTable("LightingSceneInventoryTable", 18,
                            ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollX |
                                ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingFixedFit,
                            ImVec2(0.0f, 280.0f)))
@@ -240,12 +324,14 @@ void DrawLightingSceneInventoryContents() {
     ImGui::TableSetupColumn("Amb Scale");
     ImGui::TableSetupColumn("Direct Scale");
     ImGui::TableSetupColumn("Shadow");
+    ImGui::TableSetupColumn("Shadow Type");
     ImGui::TableSetupColumn("Shadow Score");
     ImGui::TableSetupColumn("Amb Luma");
     ImGui::TableSetupColumn("Amb RGB");
     ImGui::TableSetupColumn("Score");
     ImGui::TableSetupColumn("Color");
     ImGui::TableSetupColumn("Priority");
+    ImGui::TableSetupColumn("Type");
     ImGui::TableSetupColumn("Position");
     ImGui::TableHeadersRow();
 
@@ -271,19 +357,23 @@ void DrawLightingSceneInventoryContents() {
         ImGui::TableSetColumnIndex(8);
         ImGui::TextUnformatted(EnabledLabel(light.castsShadow));
         ImGui::TableSetColumnIndex(9);
-        ImGui::Text("%.4f", light.shadowScore);
+        ImGui::TextUnformatted(LightShadowTypeLabel(light.shadowType));
         ImGui::TableSetColumnIndex(10);
-        ImGui::Text("%.4f", light.referenceAmbientLuminance);
+        ImGui::Text("%.4f", light.shadowScore);
         ImGui::TableSetColumnIndex(11);
+        ImGui::Text("%.4f", light.referenceAmbientLuminance);
+        ImGui::TableSetColumnIndex(12);
         ImGui::Text("%.1f %.1f %.1f", light.referenceAmbientColor[0], light.referenceAmbientColor[1],
                     light.referenceAmbientColor[2]);
-        ImGui::TableSetColumnIndex(12);
-        ImGui::Text("%.4f", light.selectionScore);
         ImGui::TableSetColumnIndex(13);
-        ImGui::Text("%.2f %.2f %.2f", light.color[0], light.color[1], light.color[2]);
+        ImGui::Text("%.4f", light.selectionScore);
         ImGui::TableSetColumnIndex(14);
-        ImGui::TextUnformatted(EnabledLabel(light.priority));
+        ImGui::Text("%.2f %.2f %.2f", light.color[0], light.color[1], light.color[2]);
         ImGui::TableSetColumnIndex(15);
+        ImGui::TextUnformatted(EnabledLabel(light.priority));
+        ImGui::TableSetColumnIndex(16);
+        ImGui::TextUnformatted(light.type == dusk::lighting::SceneLightType::Directional ? "directional" : "point");
+        ImGui::TableSetColumnIndex(17);
         ImGui::Text("%.0f %.0f %.0f", light.worldPosition.x, light.worldPosition.y, light.worldPosition.z);
     }
 
@@ -348,7 +438,7 @@ void DrawSceneEditorWindow(bool& open) {
         ImGui::TextUnformatted("Lighting registry is not active yet.");
     } else if (registry.lightCount == 0) {
         ImGui::TextUnformatted("No detected lights. Increase activation distance or move closer to a light.");
-    } else if (ImGui::BeginTable("LightingSceneEditorLightTable", 10,
+    } else if (ImGui::BeginTable("LightingSceneEditorLightTable", 13,
                                  ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY |
                                      ImGuiTableFlags_SizingFixedFit,
                                  ImVec2(0.0f, 220.0f)))
@@ -359,7 +449,10 @@ void DrawSceneEditorWindow(bool& open) {
         ImGui::TableSetupColumn("Amb");
         ImGui::TableSetupColumn("Direct");
         ImGui::TableSetupColumn("Shadow");
+        ImGui::TableSetupColumn("Shadow Type");
         ImGui::TableSetupColumn("Shadow Score");
+        ImGui::TableSetupColumn("Fire");
+        ImGui::TableSetupColumn("Override");
         ImGui::TableSetupColumn("Score");
         ImGui::TableSetupColumn("Color");
         ImGui::TableSetupColumn("Position");
@@ -388,12 +481,18 @@ void DrawSceneEditorWindow(bool& open) {
             ImGui::TableSetColumnIndex(5);
             ImGui::TextUnformatted(EnabledLabel(light.castsShadow));
             ImGui::TableSetColumnIndex(6);
-            ImGui::Text("%.3f", light.shadowScore);
+            ImGui::TextUnformatted(LightShadowTypeLabel(light.shadowType));
             ImGui::TableSetColumnIndex(7);
-            ImGui::Text("%.3f", light.selectionScore);
+            ImGui::Text("%.3f", light.shadowScore);
             ImGui::TableSetColumnIndex(8);
-            ImGui::Text("%.2f %.2f %.2f", light.color[0], light.color[1], light.color[2]);
+            ImGui::TextUnformatted(EnabledLabel(light.isFire));
             ImGui::TableSetColumnIndex(9);
+            ImGui::TextUnformatted(EnabledLabel(light.positionOverridden));
+            ImGui::TableSetColumnIndex(10);
+            ImGui::Text("%.3f", light.selectionScore);
+            ImGui::TableSetColumnIndex(11);
+            ImGui::Text("%.2f %.2f %.2f", light.color[0], light.color[1], light.color[2]);
+            ImGui::TableSetColumnIndex(12);
             ImGui::Text("%.0f %.0f %.0f", light.worldPosition.x, light.worldPosition.y, light.worldPosition.z);
         }
 
@@ -423,9 +522,73 @@ void DrawSceneEditorWindow(bool& open) {
                                           "%.3f");
         ruleChanged |= ImGui::Checkbox("Casts Shadows##lightEditor", &rule.scale.castsShadows);
         rule.setCastsShadows = true;
+        int shadowTypeIndex = LightShadowTypeOptionIndex(rule.scale.shadowType);
+        if (ImGui::Combo("Shadow Type##lightEditor", &shadowTypeIndex,
+                         [](void*, int index, const char** outText) {
+                             if (index < 0 || index >= IM_ARRAYSIZE(LightShadowTypeOptions)) {
+                                 return false;
+                             }
+                             *outText = LightShadowTypeOptions[index].label;
+                             return true;
+                         },
+                         nullptr, IM_ARRAYSIZE(LightShadowTypeOptions)))
+        {
+            rule.scale.shadowType = LightShadowTypeOptions[shadowTypeIndex].type;
+            rule.scale.castsShadows = rule.scale.shadowType != dusk::lighting::LightShadowType::None;
+            rule.setShadowType = true;
+            rule.setCastsShadows = true;
+            ruleChanged = true;
+        }
         ruleChanged |= ImGui::SliderFloat("Shadow Priority##lightEditor", &rule.scale.shadowPriority, 0.0f, 8.0f,
                                           "%.3f");
         ruleChanged |= ImGui::ColorEdit3("Color Scale##lightEditor", rule.scale.colorScale.data());
+
+        bool isFire = rule.scale.isFire;
+        if (ImGui::Checkbox("Is Fire##lightEditor", &isFire)) {
+            rule.scale.isFire = isFire;
+            rule.setIsFire = true;
+            ruleChanged = true;
+        }
+
+        bool positionOverride = rule.scale.hasPositionOverride;
+        if (ImGui::Checkbox("Position Override##lightEditor", &positionOverride)) {
+            rule.scale.hasPositionOverride = positionOverride;
+            rule.setPositionOverride = true;
+            if (positionOverride) {
+                const dusk::lighting::SceneLight* selectedLight = FindSelectedLight(registry);
+                if (selectedLight != nullptr) {
+                    rule.scale.position = {selectedLight->worldPosition.x, selectedLight->worldPosition.y,
+                                           selectedLight->worldPosition.z};
+                }
+            }
+            ruleChanged = true;
+        }
+        if (rule.scale.hasPositionOverride) {
+            std::array<float, 3> position = rule.scale.position;
+            if (ImGui::DragFloat3("Position XYZ##lightEditor", position.data(), 10.0f, -500000.0f, 500000.0f,
+                                  "%.1f"))
+            {
+                rule.scale.position = position;
+                rule.setPositionOverride = true;
+                ruleChanged = true;
+            }
+            if (ImGui::Button("Use Detected Position##lightEditor")) {
+                const dusk::lighting::SceneLight* selectedLight = FindSelectedLight(registry);
+                if (selectedLight != nullptr) {
+                    rule.scale.position = {selectedLight->worldPosition.x, selectedLight->worldPosition.y,
+                                           selectedLight->worldPosition.z};
+                    rule.setPositionOverride = true;
+                    ruleChanged = true;
+                }
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Clear Position Override##lightEditor")) {
+                rule.scale.hasPositionOverride = false;
+                rule.setPositionOverride = true;
+                ruleChanged = true;
+            }
+        }
+
         if (ruleChanged) {
             ApplySelectedLightRuleLive();
         }
@@ -442,6 +605,9 @@ void DrawSceneEditorWindow(bool& open) {
         if (ImGui::Button("Reset Selected Light##lightEditor")) {
             sLightEditor.selectedRule.setEnabled = true;
             sLightEditor.selectedRule.setCastsShadows = true;
+            sLightEditor.selectedRule.setShadowType = true;
+            sLightEditor.selectedRule.setPositionOverride = true;
+            sLightEditor.selectedRule.setIsFire = true;
             sLightEditor.selectedRule.scale = {};
             ApplySelectedLightRuleLive();
         }
@@ -700,13 +866,35 @@ void DrawPbrShadowMapStatusContents() {
     dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Map available:    {}\n"), EnabledLabel(status->mapAvailable)));
     dusk::ImGuiStringViewText(
         fmt::format(FMT_STRING("Light request:    {}\n"), EnabledLabel(status->lightRequestValid)));
+    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Matrix valid:     {}\n"), EnabledLabel(status->matrixValid)));
+    dusk::ImGuiStringViewText(
+        fmt::format(FMT_STRING("Caster pass:      {}\n"), EnabledLabel(status->casterPassReady)));
+    dusk::ImGuiStringViewText(
+        fmt::format(FMT_STRING("Receiver sample:  {}\n"), EnabledLabel(status->receiverSamplingReady)));
+    dusk::ImGuiStringViewText(
+        fmt::format(FMT_STRING("Refresh pending:  {}\n"), EnabledLabel(status->refreshPending)));
     dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Size:             {}x{}\n"), status->size, status->size));
+    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Atlas slots:      {} planned\n"), status->atlasSlotCount));
+    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Budget:           {} active, {} refresh/frame\n"),
+                                    status->maxActiveSlots, status->slotsPerFrame));
+    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Requests:         {}\n"), status->requestCount));
+    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Request mask:     0x{:x}\n"), status->requestMask));
+    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Captured slots:   {}\n"), status->capturedSlotCount));
+    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Captured mask:    0x{:x}\n"), status->capturedSlotMask));
+    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Pending mask:     0x{:x}\n"), status->pendingSlotMask));
+    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Shadow draws:     {}\n"), status->drawCount));
+    dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Slot draws:       {}, {}, {}, {}\n"),
+                                    status->slotDrawCounts[0], status->slotDrawCounts[1],
+                                    status->slotDrawCounts[2], status->slotDrawCounts[3]));
     dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Strength:         {:.3f}\n"), status->strength));
     dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Bias:             {:.5f}\n"), status->bias));
     if (status->lightRequestValid) {
         const auto& request = status->lightRequest;
         dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Source:           {} {}\n"),
                                         AuroraSceneLightSourceLabel(request.source), request.sourceIndex));
+        dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Shadow type:      {}\n"),
+                                        AuroraShadowTypeLabel(status->activeShadowType)));
+        dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Atlas slot:       {}\n"), status->activeAtlasSlot));
         dusk::ImGuiStringViewText(
             fmt::format(FMT_STRING("Stable ID:        0x{:x}\n"), request.stableId));
         dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Score/priority:   {:.4f} / {:.3f}\n"),
@@ -719,6 +907,63 @@ void DrawPbrShadowMapStatusContents() {
         dusk::ImGuiStringViewText(fmt::format(FMT_STRING("Color:            {:.3f}, {:.3f}, {:.3f}\n"),
                                         request.color[0], request.color[1], request.color[2]));
     }
+
+    if (ImGui::TreeNode("Atlas Slot Requests##pbrShadowStatus")) {
+        if (ImGui::BeginTable("PbrShadowAtlasSlots", 9,
+                              ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_SizingStretchProp)) {
+            ImGui::TableSetupColumn("Slot");
+            ImGui::TableSetupColumn("Req");
+            ImGui::TableSetupColumn("Cap");
+            ImGui::TableSetupColumn("Pending");
+            ImGui::TableSetupColumn("Draws");
+            ImGui::TableSetupColumn("Source");
+            ImGui::TableSetupColumn("Type");
+            ImGui::TableSetupColumn("Score");
+            ImGui::TableSetupColumn("Priority");
+            ImGui::TableHeadersRow();
+            const uint32_t slotCount = std::min<uint32_t>(status->atlasSlotCount, 4);
+            for (uint32_t slot = 0; slot < slotCount; ++slot) {
+                const auto& request = status->requests[slot];
+                const bool requested = (status->requestMask & (1u << slot)) != 0;
+                const bool captured = (status->capturedSlotMask & (1u << slot)) != 0;
+                const bool pending = (status->pendingSlotMask & (1u << slot)) != 0;
+
+                ImGui::TableNextRow();
+                ImGui::TableNextColumn();
+                ImGui::Text("%u", slot);
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(EnabledLabel(requested && request.valid));
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(EnabledLabel(captured));
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(EnabledLabel(pending));
+                ImGui::TableNextColumn();
+                ImGui::Text("%u", status->slotDrawCounts[slot]);
+                ImGui::TableNextColumn();
+                if (requested && request.valid) {
+                    ImGui::Text("%s %u", AuroraSceneLightSourceLabel(request.source), request.sourceIndex);
+                } else {
+                    ImGui::TextUnformatted("-");
+                }
+                ImGui::TableNextColumn();
+                ImGui::TextUnformatted(requested && request.valid ? AuroraShadowTypeLabel(request.shadowType) : "-");
+                ImGui::TableNextColumn();
+                if (requested && request.valid) {
+                    ImGui::Text("%.3f", request.score);
+                } else {
+                    ImGui::TextUnformatted("-");
+                }
+                ImGui::TableNextColumn();
+                if (requested && request.valid) {
+                    ImGui::Text("%.3f", request.priority);
+                } else {
+                    ImGui::TextUnformatted("-");
+                }
+            }
+            ImGui::EndTable();
+        }
+        ImGui::TreePop();
+    }
 }
 
 
@@ -728,15 +973,25 @@ void DrawEnhancedLightingControls() {
     ImGui::SeparatorText("Enhanced Direct Lights");
     bool pbrEnhancedLights = pbr.enhancedLights;
     bool pbrEnhancedLightDebug = pbr.enhancedLightDebug;
+    bool pbrEnhancedFireFlicker = pbr.enhancedFireFlicker;
     int pbrEnhancedLightCount = pbr.enhancedLightCount;
     int pbrEnhancedLightFalloff = static_cast<int>(pbr.enhancedLightFalloff.getValue());
     float pbrEnhancedLightIntensity = pbr.enhancedLightIntensity;
+    float pbrEnhancedFireFlickerStrength = pbr.enhancedFireFlickerStrength;
+    float pbrEnhancedFireFlickerSpeed = pbr.enhancedFireFlickerSpeed;
     bool enhancedLightChanged = false;
     enhancedLightChanged |= ImGui::Checkbox("Enhanced Direct Lights##pbr", &pbrEnhancedLights);
     enhancedLightChanged |= ImGui::SliderInt("Active GPU Lights##pbr", &pbrEnhancedLightCount, 1, 64);
     enhancedLightChanged |= ImGui::Combo("Falloff##pbr", &pbrEnhancedLightFalloff, PbrEnhancedLightFalloffLabels,
                                          IM_ARRAYSIZE(PbrEnhancedLightFalloffLabels));
     enhancedLightChanged |= ImGui::SliderFloat("Intensity##pbr", &pbrEnhancedLightIntensity, 0.0f, 8.0f);
+    enhancedLightChanged |= ImGui::Checkbox("Fire Light Flicker##pbr", &pbrEnhancedFireFlicker);
+    if (pbrEnhancedFireFlicker) {
+        enhancedLightChanged |=
+            ImGui::SliderFloat("Fire Flicker Strength##pbr", &pbrEnhancedFireFlickerStrength, 0.0f, 1.0f, "%.3f");
+        enhancedLightChanged |=
+            ImGui::SliderFloat("Fire Flicker Speed##pbr", &pbrEnhancedFireFlickerSpeed, 0.1f, 4.0f, "%.2f");
+    }
     enhancedLightChanged |= ImGui::Checkbox("Debug Overlay Data##pbr", &pbrEnhancedLightDebug);
     if (enhancedLightChanged) {
         pbr.enhancedLights.setValue(pbrEnhancedLights);
@@ -744,6 +999,9 @@ void DrawEnhancedLightingControls() {
         pbr.enhancedLightFalloff.setValue(pbrEnhancedLightFalloff == 1 ? dusk::PbrEnhancedLightFalloff::InverseSquare
                                                                        : dusk::PbrEnhancedLightFalloff::LegacyRadius);
         pbr.enhancedLightIntensity.setValue(pbrEnhancedLightIntensity);
+        pbr.enhancedFireFlicker.setValue(pbrEnhancedFireFlicker);
+        pbr.enhancedFireFlickerStrength.setValue(pbrEnhancedFireFlickerStrength);
+        pbr.enhancedFireFlickerSpeed.setValue(pbrEnhancedFireFlickerSpeed);
         pbr.enhancedLightDebug.setValue(pbrEnhancedLightDebug);
         dusk::pbr_settings::apply_enhanced_lighting();
         dusk::config::Save();
@@ -794,42 +1052,65 @@ void DrawEnhancedShadowControls() {
 
     ImGui::SeparatorText("Enhanced Shadows");
     bool pbrEnhancedShadows = pbr.enhancedShadows;
-    int pbrEnhancedShadowMode = static_cast<int>(pbr.enhancedShadowMode.getValue());
+    dusk::PbrEnhancedShadowMode pbrEnhancedShadowMode = dusk::lighting::effective_enhanced_shadow_mode();
     int pbrEnhancedShadowMapSize = pbr.enhancedShadowMapSize;
     float pbrEnhancedShadowStrength = pbr.enhancedShadowStrength;
     float pbrEnhancedShadowBias = pbr.enhancedShadowBias;
+    int pbrEnhancedShadowMaxMaps = pbr.enhancedShadowMaxMaps;
+    int pbrEnhancedShadowMapsPerFrame = pbr.enhancedShadowMapsPerFrame;
     bool shadowChanged = false;
-    shadowChanged |= ImGui::Checkbox("Enhanced Shadows##pbr", &pbrEnhancedShadows);
+    shadowChanged |= ImGui::Checkbox("Use Enhanced Shadows##pbr", &pbrEnhancedShadows);
 
     if (pbrEnhancedShadows) {
-        shadowChanged |= ImGui::Combo("Shadow Mode##pbr", &pbrEnhancedShadowMode, PbrEnhancedShadowModeLabels,
-                                      IM_ARRAYSIZE(PbrEnhancedShadowModeLabels));
-        if (pbrEnhancedShadowMode == static_cast<int>(dusk::PbrEnhancedShadowMode::OverrideDirection)) {
-            ImGui::TextUnformatted("Real shadows use the dominant enhanced light for direction.");
-        } else if (pbrEnhancedShadowMode == static_cast<int>(dusk::PbrEnhancedShadowMode::DisableGameShadows)) {
+        int shadowModeIndex = ShadowModeOptionIndex(pbrEnhancedShadowMode);
+        if (ImGui::BeginCombo("Shadow Path##pbr", PbrEnhancedShadowModeOptions[shadowModeIndex].label)) {
+            for (int i = 0; i < IM_ARRAYSIZE(PbrEnhancedShadowModeOptions); ++i) {
+                const bool selected = i == shadowModeIndex;
+                if (ImGui::Selectable(PbrEnhancedShadowModeOptions[i].label, selected)) {
+                    shadowModeIndex = i;
+                    pbrEnhancedShadowMode = PbrEnhancedShadowModeOptions[i].mode;
+                    shadowChanged = true;
+                }
+                if (selected) {
+                    ImGui::SetItemDefaultFocus();
+                }
+            }
+            ImGui::EndCombo();
+        }
+
+        if (pbrEnhancedShadowMode == dusk::PbrEnhancedShadowMode::OverrideDirection) {
+            ImGui::TextUnformatted("Original real shadows use the dominant enhanced light for direction.");
+        } else if (pbrEnhancedShadowMode == dusk::PbrEnhancedShadowMode::DisableGameShadows) {
             ImGui::TextUnformatted("Original real and simple shadows are suppressed.");
-        } else if (pbrEnhancedShadowMode == static_cast<int>(dusk::PbrEnhancedShadowMode::Hybrid)) {
+        } else if (pbrEnhancedShadowMode == dusk::PbrEnhancedShadowMode::Hybrid) {
             ImGui::TextUnformatted("Original real shadows are suppressed; simple/contact shadows remain.");
-        } else if (pbrEnhancedShadowMode == static_cast<int>(dusk::PbrEnhancedShadowMode::AuroraShadowMaps)) {
+        } else if (pbrEnhancedShadowMode == dusk::PbrEnhancedShadowMode::AuroraShadowMaps) {
             ImGui::TextUnformatted("Original real shadows are suppressed; Aurora owns the PBR shadow-map slot.");
+            shadowChanged |= ImGui::SliderInt("Max Shadow Maps##pbr", &pbrEnhancedShadowMaxMaps, 1, 4);
+            shadowChanged |= ImGui::SliderInt("Maps Refreshed Per Frame##pbr", &pbrEnhancedShadowMapsPerFrame, 1, 4);
             shadowChanged |= ImGui::SliderInt("Shadow Map Size##pbr", &pbrEnhancedShadowMapSize, 256, 4096);
             shadowChanged |= ImGui::SliderFloat("Shadow Strength##pbr", &pbrEnhancedShadowStrength, 0.0f, 1.0f, "%.3f");
             shadowChanged |= ImGui::SliderFloat("Shadow Bias##pbr", &pbrEnhancedShadowBias, 0.0f, 0.02f, "%.5f");
+            if (ImGui::Button("Refresh Shadow Atlas##pbr")) {
+                aurora_request_pbr_shadow_map_refresh();
+            }
             if (ImGui::TreeNode("Aurora Shadow Map Status##pbr")) {
                 DrawPbrShadowMapStatusContents();
                 ImGui::TreePop();
             }
-        } else {
-            ImGui::TextUnformatted("Original game shadow direction is preserved.");
         }
+    } else {
+        ImGui::TextUnformatted("Disabled: the original game shadow renderer is untouched.");
     }
 
     if (shadowChanged) {
         pbr.enhancedShadows.setValue(pbrEnhancedShadows);
-        pbr.enhancedShadowMode.setValue(static_cast<dusk::PbrEnhancedShadowMode>(pbrEnhancedShadowMode));
+        pbr.enhancedShadowMode.setValue(pbrEnhancedShadowMode);
         pbr.enhancedShadowMapSize.setValue(pbrEnhancedShadowMapSize);
         pbr.enhancedShadowStrength.setValue(pbrEnhancedShadowStrength);
         pbr.enhancedShadowBias.setValue(pbrEnhancedShadowBias);
+        pbr.enhancedShadowMaxMaps.setValue(pbrEnhancedShadowMaxMaps);
+        pbr.enhancedShadowMapsPerFrame.setValue(pbrEnhancedShadowMapsPerFrame);
         dusk::pbr_settings::apply_enhanced_shadows();
         dusk::config::Save();
     }

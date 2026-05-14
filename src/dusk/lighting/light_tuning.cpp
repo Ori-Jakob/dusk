@@ -90,6 +90,24 @@ std::array<float, 3> json_float3(const json& object, std::string_view key, std::
     return values;
 }
 
+std::array<float, 3> json_float3_range(const json& object, std::string_view key, std::array<float, 3> fallback,
+                                       float min, float max) {
+    const auto it = object.find(key);
+    if (it == object.end() || !it->is_array() || it->size() != 3) {
+        return fallback;
+    }
+
+    std::array<float, 3> values = fallback;
+    for (size_t i = 0; i < values.size(); ++i) {
+        if (!(*it)[i].is_number()) {
+            return fallback;
+        }
+        values[i] = std::clamp((*it)[i].get<float>(), min, max);
+    }
+
+    return values;
+}
+
 std::string lower_ascii(std::string_view text) {
     std::string out;
     out.reserve(text.size());
@@ -114,8 +132,50 @@ bool source_matches(std::string_view ruleSource, std::string_view lightSource) {
     if (source == "effect" && (rule == "efplight" || rule == "game_effect")) {
         return true;
     }
+    if (source == "base" &&
+        (rule == "base_light" || rule == "environment" || rule == "environment_key" || rule == "key" ||
+         rule == "sun" || rule == "moon"))
+    {
+        return true;
+    }
 
     return false;
+}
+
+LightShadowType shadow_type_from_string(std::string_view text, LightShadowType fallback) {
+    const std::string value = lower_ascii(text);
+    if (value.empty()) {
+        return fallback;
+    }
+    if (value == "none" || value == "off" || value == "disabled") {
+        return LightShadowType::None;
+    }
+    if (value == "local" || value == "local_projected" || value == "projected" || value == "spot") {
+        return LightShadowType::LocalProjected;
+    }
+    if (value == "directional" || value == "sun" || value == "key") {
+        return LightShadowType::Directional;
+    }
+    if (value == "point" || value == "cubemap" || value == "cube") {
+        return LightShadowType::Point;
+    }
+
+    return fallback;
+}
+
+const char* shadow_type_to_string(LightShadowType type) {
+    switch (type) {
+    case LightShadowType::None:
+        return "none";
+    case LightShadowType::LocalProjected:
+        return "local_projected";
+    case LightShadowType::Directional:
+        return "directional";
+    case LightShadowType::Point:
+        return "point";
+    }
+
+    return "local_projected";
 }
 
 void apply_light_rules(const json& document, LightingTuning& tuning) {
@@ -142,7 +202,26 @@ void apply_light_rules(const json& document, LightingTuning& tuning) {
         rule.scale.powerScale = json_float_range(item, "powerScale", rule.scale.powerScale, 0.01f, 16.0f);
         rule.scale.scoreScale = json_float(item, "scoreScale", rule.scale.scoreScale);
         rule.scale.shadowPriority = json_float(item, "shadowPriority", rule.scale.shadowPriority);
+        if (item.contains("shadowType")) {
+            rule.setShadowType = true;
+            if (item["shadowType"].is_string()) {
+                rule.scale.shadowType =
+                    shadow_type_from_string(item["shadowType"].get<std::string>(), rule.scale.shadowType);
+            } else if (item["shadowType"].is_number_integer()) {
+                const int type = std::clamp(item["shadowType"].get<int>(), 0, 3);
+                rule.scale.shadowType = static_cast<LightShadowType>(type);
+            }
+        }
         rule.scale.colorScale = json_float3(item, "colorScale", rule.scale.colorScale);
+        if (item.contains("position") && item["position"].is_array()) {
+            rule.setPositionOverride = true;
+            rule.scale.hasPositionOverride = true;
+            rule.scale.position = json_float3_range(item, "position", rule.scale.position, -500000.0f, 500000.0f);
+        }
+        if (item.contains("isFire") && item["isFire"].is_boolean()) {
+            rule.setIsFire = true;
+            rule.scale.isFire = item["isFire"].get<bool>();
+        }
 
         const bool hasEnabled = item.contains("enabled") && item["enabled"].is_boolean();
         const bool hasDisabled = item.contains("disabled") && item["disabled"].is_boolean();
@@ -187,6 +266,19 @@ void apply_rule_to_scale(const LightTuningRule& rule, LightTuningScale& scale, b
     if (rule.setCastsShadows) {
         scale.castsShadows = rule.scale.castsShadows;
     }
+    if (rule.setShadowType) {
+        scale.shadowType = rule.scale.shadowType;
+        if (scale.shadowType == LightShadowType::None) {
+            scale.castsShadows = false;
+        }
+    }
+    if (rule.setPositionOverride) {
+        scale.hasPositionOverride = rule.scale.hasPositionOverride;
+        scale.position = rule.scale.position;
+    }
+    if (rule.setIsFire) {
+        scale.isFire = rule.scale.isFire;
+    }
 
     if (replace) {
         scale.ambientScale = rule.scale.ambientScale;
@@ -195,7 +287,11 @@ void apply_rule_to_scale(const LightTuningRule& rule, LightTuningScale& scale, b
         scale.powerScale = rule.scale.powerScale;
         scale.scoreScale = rule.scale.scoreScale;
         scale.shadowPriority = rule.scale.shadowPriority;
+        scale.shadowType = rule.scale.shadowType;
         scale.colorScale = rule.scale.colorScale;
+        scale.hasPositionOverride = rule.scale.hasPositionOverride;
+        scale.position = rule.scale.position;
+        scale.isFire = rule.scale.isFire;
         return;
     }
 
@@ -257,7 +353,16 @@ json light_rule_to_json(const LightTuningRule& rule) {
         object["castsShadows"] = rule.scale.castsShadows;
     }
     object["shadowPriority"] = rule.scale.shadowPriority;
+    if (rule.setShadowType) {
+        object["shadowType"] = shadow_type_to_string(rule.scale.shadowType);
+    }
     object["colorScale"] = {rule.scale.colorScale[0], rule.scale.colorScale[1], rule.scale.colorScale[2]};
+    if (rule.setPositionOverride && rule.scale.hasPositionOverride) {
+        object["position"] = {rule.scale.position[0], rule.scale.position[1], rule.scale.position[2]};
+    }
+    if (rule.setIsFire) {
+        object["isFire"] = rule.scale.isFire;
+    }
     return object;
 }
 

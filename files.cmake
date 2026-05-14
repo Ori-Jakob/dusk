@@ -1413,6 +1413,7 @@ set(DOLPHIN_FILES
 set(DUSK_FILES
         include/dusk/endian_gx.hpp
         include/dusk/config.hpp
+        include/dusk/debug_stacktrace.h
         include/dusk/dvd_asset.hpp
         include/dusk/enhanced_lighting.h
         include/dusk/lighting/lighting_features.h
@@ -1425,6 +1426,7 @@ set(DUSK_FILES
         src/dusk/asserts.cpp
         src/dusk/config.cpp
         src/dusk/crash_reporting.cpp
+        src/dusk/debug_stacktrace.cpp
         src/dusk/endian.cpp
         src/dusk/enhanced_lighting.cpp
         src/dusk/extras.c

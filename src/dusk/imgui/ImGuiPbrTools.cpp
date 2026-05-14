@@ -25,6 +25,7 @@ constexpr const char* PbrDebugModeLabels[] = {
     "IBL Specular",
     "Indirect Occlusion",
     "Dynamic GI",
+    "Shadow Visibility",
 };
 
 void DrawPbrSwordMaterialControls(const char* label, dusk::pbr_material_override::SwordMaterialKind kind) {

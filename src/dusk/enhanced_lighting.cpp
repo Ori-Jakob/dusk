@@ -4,6 +4,7 @@
 #include "dusk/lighting/lighting_features.h"
 #include "dusk/lighting/light_tuning.h"
 #include "dusk/lighting/lighting_scene.h"
+#include "dusk/game_clock.h"
 #include "dusk/settings.h"
 #include "m_Do/m_Do_mtx.h"
 
@@ -19,6 +20,7 @@ namespace dusk::enhanced_lighting {
 namespace {
 
 constexpr uint32_t MaxLights = 64;
+constexpr uint32_t MaxShadowRequests = 4;
 constexpr float LightBlendAlpha = 0.35f;
 constexpr float LightFadeOut = 0.82f;
 constexpr float MinTrackedIntensity = 0.01f;
@@ -27,28 +29,34 @@ struct CandidateLight {
     const void* source = nullptr;
     uintptr_t stableId = 0;
     lighting::SceneLightSource sourceKind = lighting::SceneLightSource::Point;
+    lighting::SceneLightType type = lighting::SceneLightType::Point;
     uint32_t sourceIndex = 0;
     cXyz worldPosition{};
+    cXyz worldDirection{};
     float color[3] = {};
     float radius = 1.0f;
     float power = 1.0f;
     float fluctuation = 0.0f;
     float intensity = 1.0f;
     float score = 0.0f;
+    bool isFire = false;
 };
 
 struct TrackedLight {
     const void* source = nullptr;
     uintptr_t stableId = 0;
     lighting::SceneLightSource sourceKind = lighting::SceneLightSource::Point;
+    lighting::SceneLightType type = lighting::SceneLightType::Point;
     uint32_t sourceIndex = 0;
     cXyz worldPosition{};
+    cXyz worldDirection{};
     float color[3] = {};
     float radius = 1.0f;
     float power = 1.0f;
     float fluctuation = 0.0f;
     float intensity = 0.0f;
     float score = 0.0f;
+    bool isFire = false;
     bool active = false;
     bool matched = false;
 };
@@ -57,6 +65,8 @@ std::array<TrackedLight, MaxLights> sTrackedLights{};
 bool sTrackedLightsInitialized = false;
 char sTrackedStage[16] = {};
 int sTrackedRoom = -999;
+float sFireFlickerTime = 0.0f;
+int sFireFlickerClockKey = 0;
 
 float luminance(float r, float g, float b) {
     return r * 0.2126f + g * 0.7152f + b * 0.0722f;
@@ -66,10 +76,62 @@ float lerp(float current, float target, float alpha) {
     return current + ((target - current) * alpha);
 }
 
+float hash_unit(uintptr_t value) {
+    uint64_t x = static_cast<uint64_t>(value);
+    x ^= x >> 33;
+    x *= 0xff51afd7ed558ccdULL;
+    x ^= x >> 33;
+    x *= 0xc4ceb9fe1a85ec53ULL;
+    x ^= x >> 33;
+    return static_cast<float>((x >> 40) & 0xFFFFFFu) / static_cast<float>(0xFFFFFFu);
+}
+
+void update_fire_flicker_clock() {
+    const float dt = game_clock::consume_interval(&sFireFlickerClockKey);
+    const auto& pbr = getSettings().backend.pbr;
+    if (!pbr.enhancedFireFlicker.getValue()) {
+        return;
+    }
+
+    const float speed = std::clamp(pbr.enhancedFireFlickerSpeed.getValue(), 0.1f, 8.0f);
+    sFireFlickerTime += dt * speed;
+}
+
+float fire_flicker_multiplier(uintptr_t stableId, bool isFire, float fluctuation) {
+    const auto& pbr = getSettings().backend.pbr;
+    if (!isFire || !pbr.enhancedFireFlicker.getValue()) {
+        return 1.0f;
+    }
+
+    const float strength = std::clamp(pbr.enhancedFireFlickerStrength.getValue(), 0.0f, 1.0f);
+    if (strength <= 0.0f) {
+        return 1.0f;
+    }
+
+    const float authoredAmount = fluctuation > 0.0f ? std::clamp(fluctuation / 255.0f, 0.25f, 1.0f) : 0.65f;
+    const float phase = hash_unit(stableId) * 6.28318530718f;
+    const float t = sFireFlickerTime;
+    const float wave = (std::sin((t * 7.3f) + phase) * 0.45f) +
+                       (std::sin((t * 13.1f) + (phase * 1.71f)) * 0.35f) +
+                       (std::sin((t * 23.7f) + (phase * 0.37f)) * 0.20f);
+
+    return std::max(0.20f, 1.0f + (wave * strength * authoredAmount));
+}
+
 void lerp_position(cXyz& current, const cXyz& target, float alpha) {
     current.x = lerp(current.x, target.x, alpha);
     current.y = lerp(current.y, target.y, alpha);
     current.z = lerp(current.z, target.z, alpha);
+}
+
+cXyz normalize_or_default(const cXyz& value, const cXyz& fallback) {
+    const float lenSq = value.x * value.x + value.y * value.y + value.z * value.z;
+    if (lenSq <= 0.000001f) {
+        return fallback;
+    }
+
+    const float invLen = 1.0f / std::sqrt(lenSq);
+    return cXyz(value.x * invLen, value.y * invLen, value.z * invLen);
 }
 
 void reset_tracked_lights() {
@@ -126,8 +188,10 @@ CandidateLight make_candidate(const lighting::SceneLight& sceneLight) {
     candidate.source = sceneLight.sourcePointer;
     candidate.stableId = sceneLight.stableId;
     candidate.sourceKind = sceneLight.source;
+    candidate.type = sceneLight.type;
     candidate.sourceIndex = sceneLight.sourceIndex;
     candidate.worldPosition = sceneLight.worldPosition;
+    candidate.worldDirection = sceneLight.worldDirection;
     candidate.radius = sceneLight.radius;
     candidate.power = sceneLight.power;
     candidate.fluctuation = sceneLight.fluctuation;
@@ -136,6 +200,7 @@ CandidateLight make_candidate(const lighting::SceneLight& sceneLight) {
     candidate.color[2] = sceneLight.color[2];
     candidate.intensity = sceneLight.tuningDirectScale;
     candidate.score = sceneLight.selectionScore;
+    candidate.isFire = sceneLight.isFire;
     return candidate;
 }
 
@@ -178,12 +243,14 @@ void apply_candidate_to_tracked_light(TrackedLight& tracked, const CandidateLigh
     tracked.source = candidate.source;
     tracked.stableId = candidate.stableId;
     tracked.sourceKind = candidate.sourceKind;
+    tracked.type = candidate.type;
     tracked.sourceIndex = candidate.sourceIndex;
     tracked.active = true;
     tracked.matched = true;
 
     if (immediate) {
         tracked.worldPosition = candidate.worldPosition;
+        tracked.worldDirection = candidate.worldDirection;
         tracked.color[0] = candidate.color[0];
         tracked.color[1] = candidate.color[1];
         tracked.color[2] = candidate.color[2];
@@ -192,10 +259,13 @@ void apply_candidate_to_tracked_light(TrackedLight& tracked, const CandidateLigh
         tracked.fluctuation = candidate.fluctuation;
         tracked.intensity = candidate.intensity;
         tracked.score = candidate.score;
+        tracked.isFire = candidate.isFire;
         return;
     }
 
     lerp_position(tracked.worldPosition, candidate.worldPosition, LightBlendAlpha);
+    lerp_position(tracked.worldDirection, candidate.worldDirection, LightBlendAlpha);
+    tracked.worldDirection = normalize_or_default(tracked.worldDirection, candidate.worldDirection);
     tracked.color[0] = lerp(tracked.color[0], candidate.color[0], LightBlendAlpha);
     tracked.color[1] = lerp(tracked.color[1], candidate.color[1], LightBlendAlpha);
     tracked.color[2] = lerp(tracked.color[2], candidate.color[2], LightBlendAlpha);
@@ -204,6 +274,7 @@ void apply_candidate_to_tracked_light(TrackedLight& tracked, const CandidateLigh
     tracked.fluctuation = lerp(tracked.fluctuation, candidate.fluctuation, LightBlendAlpha);
     tracked.intensity = lerp(tracked.intensity, candidate.intensity, LightBlendAlpha);
     tracked.score = lerp(tracked.score, candidate.score, LightBlendAlpha);
+    tracked.isFire = candidate.isFire;
 }
 
 void update_tracked_lights(const std::array<CandidateLight, MaxLights>& candidates, uint32_t candidateCount) {
@@ -227,14 +298,17 @@ void update_tracked_lights(const std::array<CandidateLight, MaxLights>& candidat
             tracked.source = candidate.source;
             tracked.stableId = candidate.stableId;
             tracked.sourceKind = candidate.sourceKind;
+            tracked.type = candidate.type;
             tracked.sourceIndex = candidate.sourceIndex;
             tracked.worldPosition = candidate.worldPosition;
+            tracked.worldDirection = candidate.worldDirection;
             tracked.color[0] = candidate.color[0];
             tracked.color[1] = candidate.color[1];
             tracked.color[2] = candidate.color[2];
             tracked.radius = candidate.radius;
             tracked.power = candidate.power;
             tracked.fluctuation = candidate.fluctuation;
+            tracked.isFire = candidate.isFire;
             tracked.active = true;
         }
 
@@ -258,6 +332,8 @@ void update_tracked_lights(const std::array<CandidateLight, MaxLights>& candidat
 
 AuroraSceneLightSource make_aurora_scene_light_source(lighting::SceneLightSource source) {
     switch (source) {
+    case lighting::SceneLightSource::Base:
+        return AURORA_SCENE_LIGHT_SOURCE_GAME_ENVIRONMENT;
     case lighting::SceneLightSource::Point:
         return AURORA_SCENE_LIGHT_SOURCE_GAME_POINT;
     case lighting::SceneLightSource::Effect:
@@ -265,6 +341,21 @@ AuroraSceneLightSource make_aurora_scene_light_source(lighting::SceneLightSource
     }
 
     return AURORA_SCENE_LIGHT_SOURCE_UNKNOWN;
+}
+
+uint32_t make_aurora_shadow_type(lighting::LightShadowType type) {
+    switch (type) {
+    case lighting::LightShadowType::None:
+        return AURORA_PBR_SHADOW_TYPE_NONE;
+    case lighting::LightShadowType::LocalProjected:
+        return AURORA_PBR_SHADOW_TYPE_LOCAL_PROJECTED;
+    case lighting::LightShadowType::Directional:
+        return AURORA_PBR_SHADOW_TYPE_DIRECTIONAL;
+    case lighting::LightShadowType::Point:
+        return AURORA_PBR_SHADOW_TYPE_POINT;
+    }
+
+    return AURORA_PBR_SHADOW_TYPE_LOCAL_PROJECTED;
 }
 
 AuroraSceneLight make_aurora_scene_light(const CandidateLight& candidate, MtxP viewMtx, float directScale) {
@@ -275,19 +366,33 @@ AuroraSceneLight make_aurora_scene_light(const CandidateLight& candidate, MtxP v
     }
 
     AuroraSceneLight light{};
-    light.type = AURORA_SCENE_LIGHT_POINT;
+    light.type = candidate.type == lighting::SceneLightType::Directional ? AURORA_SCENE_LIGHT_DIRECTIONAL
+                                                                         : AURORA_SCENE_LIGHT_POINT;
     light.source = make_aurora_scene_light_source(candidate.sourceKind);
     light.sourceIndex = candidate.sourceIndex;
     light.stableId = static_cast<uint64_t>(candidate.stableId);
     light.position[0] = shaderPos.x;
     light.position[1] = shaderPos.y;
     light.position[2] = shaderPos.z;
+    if (candidate.type == lighting::SceneLightType::Directional) {
+        Vec worldDirection{candidate.worldDirection.x, candidate.worldDirection.y, candidate.worldDirection.z};
+        Vec shaderDirection = worldDirection;
+        if (viewMtx != nullptr) {
+            cMtx_multVecSR(viewMtx, &worldDirection, &shaderDirection);
+        }
+        cXyz normalizedDirection =
+            normalize_or_default(cXyz(shaderDirection.x, shaderDirection.y, shaderDirection.z), cXyz(-0.45f, 0.65f, 0.62f));
+        light.direction[0] = normalizedDirection.x;
+        light.direction[1] = normalizedDirection.y;
+        light.direction[2] = normalizedDirection.z;
+    }
     light.radius = candidate.radius;
     light.color[0] = candidate.color[0];
     light.color[1] = candidate.color[1];
     light.color[2] = candidate.color[2];
     light.intensity = candidate.intensity * std::max(directScale, 0.0f);
     light.score = candidate.score;
+    light.flags = candidate.isFire ? AURORA_SCENE_LIGHT_FLAG_FIRE : 0;
     return light;
 }
 
@@ -297,6 +402,7 @@ AuroraPbrShadowLightRequest make_aurora_shadow_light_request(const lighting::Sce
     request.valid = true;
     request.source = make_aurora_scene_light_source(sceneLight.source);
     request.sourceIndex = sceneLight.sourceIndex;
+    request.shadowType = make_aurora_shadow_type(sceneLight.shadowType);
     request.stableId = static_cast<uint64_t>(sceneLight.stableId);
     request.position[0] = sceneLight.worldPosition.x;
     request.position[1] = sceneLight.worldPosition.y;
@@ -313,6 +419,52 @@ AuroraPbrShadowLightRequest make_aurora_shadow_light_request(const lighting::Sce
     return request;
 }
 
+void insert_shadow_request(std::array<AuroraPbrShadowLightRequest, MaxShadowRequests>& requests, uint32_t& count,
+                           uint32_t maxRequests, AuroraPbrShadowLightRequest request) {
+    if (!request.valid || request.score <= 0.0f || request.shadowType == AURORA_PBR_SHADOW_TYPE_NONE) {
+        return;
+    }
+
+    maxRequests = std::clamp<uint32_t>(maxRequests, 1, MaxShadowRequests);
+    uint32_t insertAt = 0;
+    while (insertAt < count) {
+        if (request.priority > requests[insertAt].priority ||
+            (request.priority == requests[insertAt].priority && request.score > requests[insertAt].score))
+        {
+            break;
+        }
+        ++insertAt;
+    }
+
+    if (insertAt >= maxRequests) {
+        return;
+    }
+
+    if (count < maxRequests) {
+        ++count;
+    }
+    for (uint32_t i = count - 1; i > insertAt; --i) {
+        requests[i] = requests[i - 1];
+    }
+    requests[insertAt] = request;
+}
+
+uint32_t collect_shadow_requests(const lighting::SceneLightRegistry& registry, const cXyz& referencePos,
+                                 std::array<AuroraPbrShadowLightRequest, MaxShadowRequests>& requests) {
+    uint32_t requestCount = 0;
+    const uint32_t maxRequests =
+        std::clamp<uint32_t>(getSettings().backend.pbr.enhancedShadowMaxMaps.getValue(), 1, MaxShadowRequests);
+    for (uint32_t i = 0; i < registry.lightCount; ++i) {
+        const lighting::SceneLight& light = registry.lights[i];
+        if (!light.castsShadow || light.shadowScore <= 0.0f || light.shadowType == lighting::LightShadowType::None) {
+            continue;
+        }
+        insert_shadow_request(requests, requestCount, maxRequests, make_aurora_shadow_light_request(light, referencePos));
+    }
+
+    return requestCount;
+}
+
 uint32_t collect_tracked_light_outputs(std::array<CandidateLight, MaxLights>& outputs) {
     uint32_t outputCount = 0;
     for (const TrackedLight& tracked : sTrackedLights) {
@@ -324,16 +476,20 @@ uint32_t collect_tracked_light_outputs(std::array<CandidateLight, MaxLights>& ou
         candidate.source = tracked.source;
         candidate.stableId = tracked.stableId;
         candidate.sourceKind = tracked.sourceKind;
+        candidate.type = tracked.type;
         candidate.sourceIndex = tracked.sourceIndex;
         candidate.worldPosition = tracked.worldPosition;
+        candidate.worldDirection = tracked.worldDirection;
         candidate.color[0] = tracked.color[0];
         candidate.color[1] = tracked.color[1];
         candidate.color[2] = tracked.color[2];
         candidate.radius = tracked.radius;
         candidate.power = tracked.power;
         candidate.fluctuation = tracked.fluctuation;
-        candidate.intensity = tracked.intensity;
+        const float flicker = fire_flicker_multiplier(tracked.stableId, tracked.isFire, tracked.fluctuation);
+        candidate.intensity = tracked.intensity * flicker;
         candidate.score = tracked.score * tracked.intensity;
+        candidate.isFire = tracked.isFire;
         insert_candidate(outputs, outputCount, candidate);
     }
 
@@ -347,7 +503,7 @@ void update_lights_for_current_view() {
         reset_tracked_lights();
         lighting::clear_scene_lights();
         aurora_set_scene_lights(nullptr, 0);
-        aurora_set_pbr_shadow_light_request(nullptr);
+        aurora_set_pbr_shadow_light_requests(nullptr, 0);
         return;
     }
 
@@ -356,11 +512,12 @@ void update_lights_for_current_view() {
         reset_tracked_lights();
         lighting::clear_scene_lights();
         aurora_set_scene_lights(nullptr, 0);
-        aurora_set_pbr_shadow_light_request(nullptr);
+        aurora_set_pbr_shadow_light_requests(nullptr, 0);
         return;
     }
 
     reset_tracked_lights_on_scene_change();
+    update_fire_flicker_clock();
 
     const char* stage = dComIfGp_getStartStageName();
     if (stage == nullptr) {
@@ -376,6 +533,15 @@ void update_lights_for_current_view() {
 
     lighting::update_scene_lights(referencePos);
 
+    const lighting::SceneLightRegistry& updatedRegistry = lighting::scene_lights();
+    if (lighting::enhanced_shadows_enabled()) {
+        std::array<AuroraPbrShadowLightRequest, MaxShadowRequests> shadowRequests{};
+        const uint32_t shadowRequestCount = collect_shadow_requests(updatedRegistry, referencePos, shadowRequests);
+        aurora_set_pbr_shadow_light_requests(shadowRequests.data(), shadowRequestCount);
+    } else {
+        aurora_set_pbr_shadow_light_requests(nullptr, 0);
+    }
+
     std::array<CandidateLight, MaxLights> candidates{};
     uint32_t candidateCount = 0;
     collect_lights(candidates, candidateCount);
@@ -389,17 +555,6 @@ void update_lights_for_current_view() {
     }
 
     aurora_set_scene_lights(lights.data(), outputCount);
-
-    const lighting::SceneLightRegistry& updatedRegistry = lighting::scene_lights();
-    if (lighting::enhanced_shadows_enabled() && updatedRegistry.shadowLightIndex >= 0 &&
-        static_cast<uint32_t>(updatedRegistry.shadowLightIndex) < updatedRegistry.lightCount)
-    {
-        const lighting::SceneLight& shadowLight = updatedRegistry.lights[updatedRegistry.shadowLightIndex];
-        AuroraPbrShadowLightRequest shadowRequest = make_aurora_shadow_light_request(shadowLight, referencePos);
-        aurora_set_pbr_shadow_light_request(&shadowRequest);
-    } else {
-        aurora_set_pbr_shadow_light_request(nullptr);
-    }
 }
 
 bool find_blended_light_influence(const cXyz& receiverPos, cXyz& outLightPos, GXColorS10& outLightColor,
@@ -429,10 +584,24 @@ bool find_blended_light_influence(const cXyz& receiverPos, cXyz& outLightPos, GX
             return;
         }
 
-        const float distance = std::sqrt(lighting::scene_light_distance_squared(light, receiverPos));
-        const float power = std::max(light.power, 1.0f);
-        const float t = std::clamp(1.0f - (distance / power), 0.0f, 1.0f);
-        const float strength = t * t * (3.0f - (2.0f * t));
+        float strength = 0.0f;
+        cXyz contributionPosition = light.worldPosition;
+        if (light.type == lighting::SceneLightType::Directional) {
+            strength = std::max(light.tuningAmbientScale, 0.0f);
+            contributionPosition.x = receiverPos.x + light.worldDirection.x * std::max(light.power, 1.0f);
+            contributionPosition.y = receiverPos.y + light.worldDirection.y * std::max(light.power, 1.0f);
+            contributionPosition.z = receiverPos.z + light.worldDirection.z * std::max(light.power, 1.0f);
+        } else {
+            const float distance = std::sqrt(lighting::scene_light_distance_squared(light, receiverPos));
+            const float power = std::max(light.power, 1.0f);
+            const float t = std::clamp(1.0f - (distance / power), 0.0f, 1.0f);
+            strength = t * t * (3.0f - (2.0f * t));
+        }
+        if (strength <= 0.0f) {
+            return;
+        }
+
+        strength *= fire_flicker_multiplier(light.stableId, light.isFire, light.fluctuation);
         if (strength <= 0.0f) {
             return;
         }
@@ -442,9 +611,9 @@ bool find_blended_light_influence(const cXyz& receiverPos, cXyz& outLightPos, GX
         accumulatedColor[2] += rawB * strength;
 
         const float weight = lightLuma * strength * (light.priority ? 2.0f : 1.0f);
-        blendedPosition.x += light.worldPosition.x * weight;
-        blendedPosition.y += light.worldPosition.y * weight;
-        blendedPosition.z += light.worldPosition.z * weight;
+        blendedPosition.x += contributionPosition.x * weight;
+        blendedPosition.y += contributionPosition.y * weight;
+        blendedPosition.z += contributionPosition.z * weight;
         blendedFluctuation += light.fluctuation * weight;
         strongestContribution = std::max(strongestContribution, strength);
         directionWeight += weight;
@@ -489,9 +658,8 @@ bool find_blended_light_influence(const cXyz& receiverPos, cXyz& outLightPos, GX
 }
 
 bool find_shadow_override_position(const cXyz& receiverPos, cXyz& outLightPos) {
-    const auto& pbr = getSettings().backend.pbr;
     if (!lighting::enhanced_shadows_enabled() ||
-        pbr.enhancedShadowMode.getValue() != PbrEnhancedShadowMode::OverrideDirection)
+        lighting::effective_enhanced_shadow_mode() != PbrEnhancedShadowMode::OverrideDirection)
     {
         return false;
     }
@@ -517,20 +685,18 @@ bool find_shadow_override_position(const cXyz& receiverPos, cXyz& outLightPos) {
 }
 
 bool should_suppress_real_shadows() {
-    const auto& pbr = getSettings().backend.pbr;
     if (!lighting::enhanced_shadows_enabled()) {
         return false;
     }
 
-    const PbrEnhancedShadowMode mode = pbr.enhancedShadowMode.getValue();
+    const PbrEnhancedShadowMode mode = lighting::effective_enhanced_shadow_mode();
     return mode == PbrEnhancedShadowMode::DisableGameShadows || mode == PbrEnhancedShadowMode::Hybrid ||
            mode == PbrEnhancedShadowMode::AuroraShadowMaps;
 }
 
 bool should_suppress_simple_shadows() {
-    const auto& pbr = getSettings().backend.pbr;
     return lighting::enhanced_shadows_enabled() &&
-           pbr.enhancedShadowMode.getValue() == PbrEnhancedShadowMode::DisableGameShadows;
+           lighting::effective_enhanced_shadow_mode() == PbrEnhancedShadowMode::DisableGameShadows;
 }
 
 }  // namespace dusk::enhanced_lighting

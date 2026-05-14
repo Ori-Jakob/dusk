@@ -321,7 +321,7 @@ if (DUSK_ENABLE_SENTRY_NATIVE)
 endif ()
 
 if (WIN32)
-    list(APPEND GAME_LIBS Ws2_32)
+    list(APPEND GAME_LIBS Ws2_32 Dbghelp)
 endif ()
 
 set(DUSK_HTTP_BACKEND_SOURCE src/dusk/http/no_backend.cpp)

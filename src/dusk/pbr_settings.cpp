@@ -117,6 +117,8 @@ void apply_enhanced_shadows() {
     const bool auroraShadowMaps = lighting::aurora_shadow_maps_enabled();
     aurora_set_pbr_shadow_map_params(auroraShadowMaps, static_cast<uint32_t>(pbr.enhancedShadowMapSize.getValue()),
                                      pbr.enhancedShadowStrength.getValue(), pbr.enhancedShadowBias.getValue());
+    aurora_set_pbr_shadow_map_budget(static_cast<uint32_t>(pbr.enhancedShadowMaxMaps.getValue()),
+                                     static_cast<uint32_t>(pbr.enhancedShadowMapsPerFrame.getValue()));
 }
 
 void apply_sword_material(pbr_material_override::SwordMaterialKind kind) {
@@ -258,6 +260,9 @@ void reset_enhanced_lighting() {
     reset(pbr.enhancedLightFalloff);
     reset(pbr.enhancedLightIntensity);
     reset(pbr.enhancedLightDebug);
+    reset(pbr.enhancedFireFlicker);
+    reset(pbr.enhancedFireFlickerStrength);
+    reset(pbr.enhancedFireFlickerSpeed);
     apply_enhanced_lighting();
 }
 
@@ -268,6 +273,8 @@ void reset_enhanced_shadows() {
     reset(pbr.enhancedShadowMapSize);
     reset(pbr.enhancedShadowStrength);
     reset(pbr.enhancedShadowBias);
+    reset(pbr.enhancedShadowMaxMaps);
+    reset(pbr.enhancedShadowMapsPerFrame);
     apply_enhanced_shadows();
 }
 

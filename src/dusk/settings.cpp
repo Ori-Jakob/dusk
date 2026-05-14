@@ -181,11 +181,16 @@ UserSettings g_userSettings = {
             .enhancedLightFalloff {"backend.pbr.enhancedLightFalloff", PbrEnhancedLightFalloff::LegacyRadius},
             .enhancedLightIntensity {"backend.pbr.enhancedLightIntensity", 1.0f},
             .enhancedLightDebug {"backend.pbr.enhancedLightDebug", false},
+            .enhancedFireFlicker {"backend.pbr.enhancedFireFlicker", true},
+            .enhancedFireFlickerStrength {"backend.pbr.enhancedFireFlickerStrength", 0.18f},
+            .enhancedFireFlickerSpeed {"backend.pbr.enhancedFireFlickerSpeed", 1.0f},
             .enhancedShadows {"backend.pbr.enhancedShadows", false},
-            .enhancedShadowMode {"backend.pbr.enhancedShadowMode", PbrEnhancedShadowMode::OverrideDirection},
+            .enhancedShadowMode {"backend.pbr.enhancedShadowMode", PbrEnhancedShadowMode::AuroraShadowMaps},
             .enhancedShadowMapSize {"backend.pbr.enhancedShadowMapSize", 1024},
             .enhancedShadowStrength {"backend.pbr.enhancedShadowStrength", 1.0f},
             .enhancedShadowBias {"backend.pbr.enhancedShadowBias", 0.002f},
+            .enhancedShadowMaxMaps {"backend.pbr.enhancedShadowMaxMaps", 2},
+            .enhancedShadowMapsPerFrame {"backend.pbr.enhancedShadowMapsPerFrame", 1},
             .ordonSwordBlade = {
                 .roughness {"backend.pbr.ordonSwordBlade.roughness", 0.18f},
                 .metallic {"backend.pbr.ordonSwordBlade.metallic", 1.0f},
@@ -283,11 +288,16 @@ static void registerPbrSettings(UserSettings::PbrSettings& settings) {
     Register(settings.enhancedLightFalloff);
     Register(settings.enhancedLightIntensity);
     Register(settings.enhancedLightDebug);
+    Register(settings.enhancedFireFlicker);
+    Register(settings.enhancedFireFlickerStrength);
+    Register(settings.enhancedFireFlickerSpeed);
     Register(settings.enhancedShadows);
     Register(settings.enhancedShadowMode);
     Register(settings.enhancedShadowMapSize);
     Register(settings.enhancedShadowStrength);
     Register(settings.enhancedShadowBias);
+    Register(settings.enhancedShadowMaxMaps);
+    Register(settings.enhancedShadowMapsPerFrame);
     registerPbrSwordMaterialSettings(settings.ordonSwordBlade);
     registerPbrSwordMaterialSettings(settings.masterSwordBlade);
 }
