@@ -60,6 +60,19 @@ void DrawPbrSwordMaterialControls(const char* label, dusk::pbr_material_override
     ImGui::TreePop();
 }
 
+void DrawTextureReplacementControls() {
+    auto& backend = dusk::getSettings().backend;
+
+    bool autoRefresh = backend.textureReplacementAutoRefresh;
+    if (ImGui::Checkbox("Auto Refresh Texture Replacements", &autoRefresh)) {
+        backend.textureReplacementAutoRefresh.setValue(autoRefresh);
+        aurora_set_texture_replacement_auto_refresh(autoRefresh);
+        dusk::config::Save();
+    }
+    if (ImGui::Button("Refresh Texture Replacements Now")) {
+        aurora_refresh_texture_replacements();
+    }
+}
 
 bool DrawExperimentalPbrToggle() {
     bool enableExperimentalPbr = dusk::getSettings().backend.enableExperimentalPbr;
@@ -345,6 +358,10 @@ void DrawMaterialOverrideWindow(bool& open) {
     if (!ImGui::Begin("PBR Materials", &open)) {
         ImGui::End();
         return;
+    }
+
+    if (ImGui::CollapsingHeader("Texture Replacements", ImGuiTreeNodeFlags_DefaultOpen)) {
+        DrawTextureReplacementControls();
     }
 
     const bool enableExperimentalPbr = DrawExperimentalPbrToggle();

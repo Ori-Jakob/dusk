@@ -24,6 +24,7 @@ namespace dusk {
 		void ShowStubLog();
         void ShowBloomWindow();
         void ShowPbrWindow();
+        void ShowTextureReplacementDebugWindow();
         void ShowPbrEnhancedLightingWindow();
         void ShowLightingSceneEditorWindow();
         void ShowPbrIblOverlay();
@@ -50,6 +51,7 @@ namespace dusk {
 
         bool m_showBloomWindow = false;
         bool m_showPbrWindow = false;
+        bool m_showTextureReplacementDebugWindow = false;
         bool m_showPbrEnhancedLightingWindow = false;
         bool m_showLightingSceneEditorWindow = false;
         bool m_showPbrIblOverlay = false;

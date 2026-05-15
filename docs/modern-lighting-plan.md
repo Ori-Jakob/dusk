@@ -65,9 +65,11 @@ The current experimental lighting work already has useful pieces:
   scene lights. The effect is deterministic per stable light ID, scales by the original light fluctuation value when one
   exists, and is controlled by global strength/speed debug-menu settings.
 - Per-light shadow-caster policy can now be authored through the same tuning path using `castsShadows` and
-  `shadowPriority`. It also supports `shadowType` (`none`, `local_projected`, `directional`, or `point`) so local
-  projected 2D shadows can be the default before expensive point-light cubemap shadows exist. Override-direction shadows
-  use the chosen shadow source when one is available, and the lighting overlay/inventory expose that source.
+  `shadowPriority`. It also supports `shadowType` (`none`, `local_projected`, `directional`, or `point`). The current
+  `local_projected` mode should be treated as a projector/spot-style approximation, not a physically correct point-light
+  shadow. Torch-like omni lights should default to `none` or `contact_only` until true point-light shadows exist.
+  Override-direction shadows use the chosen shadow source when one is available, and the lighting overlay/inventory expose
+  that source.
 - Enhanced shadows now have a single ownership rule: disabled means the original game shadow renderer is untouched,
   while enabled selects an enhanced path such as Aurora shadow maps, hybrid contact shadows, direction override, or full
   original-shadow suppression. Legacy `original` config values are accepted but normalized to Aurora shadow maps when the
@@ -207,6 +209,45 @@ Bad CPU work:
 - Recomputing light influence for debug UI when the overlay is hidden.
 - Polling GPU results synchronously.
 
+### Shadow Research Notes
+
+Modern engines generally do not solve every light with one shadow model. They split shadowing by light type, then cache
+and filter each class differently:
+
+- Directional/key lights use cascaded or virtualized shadow maps so nearby geometry gets more precision while far scenery
+  stays stable.
+- Spot/projector lights use one perspective shadow map and fit cleanly into an atlas.
+- Point/omni lights are much more expensive because a physically correct shadow needs six views, usually a cubemap or
+  cubemap-array slot. They should be limited to important authored lights.
+- Contact shadows or screen-space shadows are commonly used as a cheap grounding layer, especially when full local
+  shadow maps are too expensive or too unstable.
+- Shadow caches and update policies matter as much as resolution. Static casters can remain cached, dynamic casters can
+  update on a smaller budget, and moving lights should invalidate only the slots they actually affect.
+
+For Dusk, this means the current `local_projected` path should not be treated as the default answer for torch-like point
+lights. It is useful as a directed/projector approximation, but it will produce wrong-looking rectangular or directionally
+snapping shadows when used as an omni light. The next shadow work should prove caster/receiver correctness and authoring
+semantics before increasing the number of active shadow maps.
+
+Recommended shadow type semantics:
+
+- `none`: the light contributes direct/ambient lighting but does not cast a mapped shadow.
+- `contact_only`: the light may contribute short-range grounding through the contact-shadow/AO path, but no shadow map is
+  allocated.
+- `local_projected`: a spot/projector-style local shadow with an explicit direction, cone/box bounds, and receiver fade.
+  Use for authored fixtures where a projected beam is believable.
+- `directional`: a cascaded key-light shadow for sun/moon/environment lighting.
+- `point`: future true point-light shadows using six faces or a lower-cost substitute. This should stay opt-in and
+  budgeted.
+
+Near-term shadow debugging requirements:
+
+- Atlas/depth debug views that can show each active slot, layer, or atlas rectangle.
+- Light frustum/projection overlays in the world view.
+- Caster inclusion diagnostics, especially for skinned actors like Link and alpha-tested geometry.
+- Receiver-coordinate debug modes for projected UV, depth comparison, bias, and final shadow factor.
+- Per-slot update counters that distinguish static cached draws from dynamic refreshed draws.
+
 ## Phase 1: Lighting Data Inventory
 
 Purpose: understand every source of game lighting before replacing policy.
@@ -290,31 +331,51 @@ Purpose: replace the original single-source real-shadow path with Aurora-owned s
 
 Tasks:
 
-- Implement a shadow atlas:
-  - One atlas texture or a small set of depth textures.
-  - Per-light atlas rectangles.
-  - Per-light view/projection matrices.
-  - PCF sampling and bias controls.
-- Keep shadow caster selection coarse on CPU and let Aurora own depth rendering, atlas allocation, filtering, and receiver
-  sampling.
-- Start with spot/directional-style local shadows:
-  - One selected high-priority light.
-  - Depth-only caster replay.
-  - Receiver sampling in PBR shaders.
-- Expand to multiple lights:
-  - Stable shadow-caster selection.
-  - Shadow cache with update throttling.
-  - Per-light priority based on contribution, screen relevance, and explicit flags.
-- Add directional shadows:
-  - Cascaded shadow maps for sun/moon/key light.
+- Keep the atlas/array foundation, but make the next pass correctness-first:
+  - Show every active atlas slot/layer in the debug UI.
+  - Draw the selected light projection/frustum over the scene.
+  - Expose projected UV, receiver depth, comparison depth, bias, and final shadow factor debug modes.
+  - Add caster inclusion diagnostics so it is obvious whether static geometry, alpha-tested geometry, and skinned actors
+    are present in a slot.
+- Treat `local_projected` as a spot/projector shadow, not a default point-light shadow:
+  - Require an explicit authored direction or target.
+  - Use projection edge fade and depth fade only as cleanup, not as the core correctness fix.
+  - Default torch-like omni lights to `contact_only` or `none` until point shadows exist.
+- Keep CPU shadow work coarse and stable:
+  - Dusk submits high-level light/caster policy hints and stable IDs.
+  - Aurora owns depth rendering, atlas allocation, filtering, receiver sampling, and cache invalidation.
+  - Avoid rebuilding caster lists every presentation frame.
+- Add a shadow cache policy before raising the shadow count:
+  - Static casters can remain cached until scene/room/light policy changes.
+  - Dynamic/skinned casters refresh on a small per-frame budget.
+  - Moving lights invalidate only their own slots.
+  - Empty captures retry slowly and do not thrash the cache.
+- Add a caster taxonomy:
+  - Opaque static geometry.
+  - Alpha-tested static geometry.
+  - Dynamic/skinned actors.
+  - Transparent and effect geometry excluded by default.
+- Add bias and filtering controls by shadow type:
+  - Constant bias.
+  - Slope/normal bias.
+  - Receiver-plane or depth-clamp helpers where practical.
+  - Small PCF first; EVSM/VSM only after depth-map correctness is proven.
+- Add contact shadows as the first broad grounding fix:
+  - Screen-space or depth-based short-range shadows for actors and props.
+  - Works as a fallback for omni/fire lights where a projected local shadow is wrong.
+  - Integrates with both PBR and regular GX/TEV receivers when enhanced lighting is enabled.
+- Add directional shadows after contact shadows:
+  - Cascaded shadow maps for sun/moon/key/environment light.
   - Stage/room tuning for cascade distance and bias.
-- Move cascade split selection, PCF/EVSM-style filtering, and receiver-space shadow tests to GPU shader code.
-- Add point-light shadows later:
-  - Cubemap shadows are expensive because they require six faces per light.
-  - Use only for important lights.
-- Add contact shadows:
-  - Screen-space contact shadows for short-range grounding.
-  - Optional only for PBR materials at first.
+  - Keep cascade split selection and filtering in Aurora/GPU code.
+- Add true point-light shadows later:
+  - Cubemap or cubemap-array shadows need six faces per light.
+  - Restrict to explicitly authored important lights.
+  - Prefer lower resolution, update throttling, and per-light budgets.
+- Expand to multiple mapped lights only after the above diagnostics prove the one-light and atlas-slot paths:
+  - Stable shadow source assignment.
+  - Shadow cache with update throttling.
+  - Per-light priority based on contribution, screen relevance, authored flags, and shadow type.
 
 Acceptance criteria:
 
@@ -322,6 +383,8 @@ Acceptance criteria:
   shadow path and can render at least one Aurora shadow map on PBR receivers.
 - Old real shadows can be suppressed without leaving characters completely ungrounded.
 - Shadow source changes are stable, debounced, and visible in debug UI.
+- The debug UI can explain why a receiver is shadowed, which slot it samples, and which caster geometry was rendered.
+- `local_projected` lights do not masquerade as omni point shadows; point-light shadows remain an explicit future path.
 
 ## Phase 5: Environment, Sky, Fog, And Exposure
 
@@ -613,12 +676,22 @@ Exit criteria:
   direction.
 - Done: expand atlas diagnostics. The shadow status panel now reports per-slot draw counts, and Aurora labels shadow
   capture render passes with explicit per-slot debug markers for RenderDoc inspection.
-- Refine caster filtering and receiver bias/quality controls.
-- Add atlas debug views and broader multi-light blending controls.
+- Pause broad multi-shadow expansion until the correctness path is proven:
+  - Add atlas/depth debug views for each slot.
+  - Add light frustum/projection overlays.
+  - Add receiver-coordinate and final-factor debug modes.
+  - Add caster inclusion diagnostics for static, alpha-tested, and skinned actor geometry.
+- Treat `local_projected` as projector/spot-style only. Add `contact_only`/`none` defaults for omni/fire lights that do
+  not have an authored direction.
+- Refine caster filtering and receiver bias/quality controls after the debug views can identify whether the bug is in
+  capture, projection, comparison, or filtering.
+- Add contact shadows before true point-light cubemap shadows so Link/actors have stable grounding even when local shadow
+  maps are disabled or projector-only.
+- Add directional CSM for environment/key light shadows before expensive point-light cubemap shadows.
 
 Exit criteria:
 
-- `aurora_shadow_maps` produces visible PBR receiver shadows without original real shadows.
+- `aurora_shadow_maps` produces explainable PBR and GX/TEV receiver shadows without original real shadows.
 
 ### Milestone 5: Add Probe Volumes
 
@@ -686,10 +759,39 @@ All features should expose status counters before being treated as usable.
 
 ## Immediate Next Steps
 
-1. Add a Forward+/clustered GPU light-selection prototype on top of the scene-light API.
-2. Expand the lighting scene overlay with actual Aurora shadow-atlas slot visualization.
-3. Add atlas debug texture views and per-light shadow quality controls.
-4. Refine caster filtering, receiver bias, and shadow update budgets.
+1. Do a shadow correctness/debug pass before adding more shadow features:
+   - Atlas/depth views per slot.
+   - World-space frustum/projection overlay.
+   - Receiver UV/depth/bias/factor debug modes.
+   - Caster inclusion status for static, alpha-tested, and skinned actor draws.
+2. Update light authoring semantics:
+   - `local_projected` means projector/spot-style, not omni point.
+   - Torch-like omni/fire lights default to `contact_only` or `none` unless explicitly authored.
+   - Add `contact_only` support to the tuning/UI path.
+3. Add a screen-space/depth contact-shadow path for actor and prop grounding on both PBR and enhanced GX/TEV receivers.
+4. Refine caster filtering, receiver bias, shadow cache invalidation, and update budgets using the new diagnostics.
+5. Add directional CSM for the environment/key light.
+6. Resume Forward+/clustered GPU light selection once shadow correctness and contact grounding are stable.
+7. Revisit true point-light cubemap shadows after the atlas, CSM, contact-shadow, and cache paths are behaving.
 
-This sequence removes the remaining single-light behavior first, then builds the renderer pieces needed for modern direct
-lighting, shadows, and GI.
+This sequence fixes why the current shadows look wrong before scaling the number of shadow-casting lights. It still keeps
+Dusk CPU work shallow by pushing projection, filtering, contact shadows, and eventual clustered selection into Aurora/GPU
+code.
+
+## Shadow Research References
+
+- Unreal Engine Virtual Shadow Maps: high-resolution virtualized shadow pages, directional clipmaps, page caching,
+  invalidation visualization, and shadow-caster debug views:
+  https://dev.epicgames.com/documentation/en-us/unreal-engine/virtual-shadow-maps-in-unreal-engine
+- Unity HDRP shadows: per-light shadow-map counts, separate atlases, update modes, cached shadows, mixed cached static
+  and dynamic casters, bias controls, and contact shadows:
+  https://docs.unity.cn/Packages/com.unity.render-pipelines.high-definition%4013.1/manual/Shadows-in-HDRP.html
+- Unity URP shadows: one common punctual-light atlas, a separate directional atlas, spot lights using one shadow map, and
+  point lights using six cubemap faces:
+  https://docs.unity.cn/Packages/com.unity.render-pipelines.universal%4015.0/manual/Shadows-in-URP.html
+- Godot 3D lights and shadows: PSSM directional shadows, positional shadow atlas allocation, spot versus omni shadow
+  costs, and cache/update behavior:
+  https://docs.godotengine.org/en/stable/tutorials/3d/lights_and_shadows.html
+- Microsoft Cascaded Shadow Maps: frustum partitioning, cascade selection, PCF filtering, blend bands, and common
+  artifact causes:
+  https://learn.microsoft.com/en-us/windows/win32/dxtecharts/cascaded-shadow-maps

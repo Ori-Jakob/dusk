@@ -134,6 +134,7 @@ UserSettings g_userSettings = {
         .graphicsBackend {"backend.graphicsBackend", "auto"},
         .skipPreLaunchUI {"backend.skipPreLaunchUI", false},
         .showPipelineCompilation {"backend.showPipelineCompilation", false},
+        .textureReplacementAutoRefresh {"backend.textureReplacementAutoRefresh", false},
         .enableExperimentalPbr {"backend.enableExperimentalPbr", false},
         .enableExperimentalLighting {"backend.enableExperimentalLighting", false},
         .gxFogOverrideEnabled {"backend.gxFogOverrideEnabled", false},
@@ -446,6 +447,7 @@ void registerSettings() {
     Register(g_userSettings.backend.graphicsBackend);
     Register(g_userSettings.backend.skipPreLaunchUI);
     Register(g_userSettings.backend.showPipelineCompilation);
+    Register(g_userSettings.backend.textureReplacementAutoRefresh);
     Register(g_userSettings.backend.enableExperimentalPbr);
     Register(g_userSettings.backend.enableExperimentalLighting);
     Register(g_userSettings.backend.gxFogOverrideEnabled);

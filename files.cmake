@@ -1469,6 +1469,8 @@ set(DUSK_FILES
         src/dusk/imgui/ImGuiMenuTools.hpp
         src/dusk/imgui/ImGuiPbrTools.cpp
         src/dusk/imgui/ImGuiPbrTools.hpp
+        src/dusk/imgui/ImGuiTextureReplacementDebug.cpp
+        src/dusk/imgui/ImGuiTextureReplacementDebug.hpp
         src/dusk/imgui/ImGuiActorSpawner.cpp
         src/dusk/imgui/ImGuiProcessOverlay.cpp
         src/dusk/imgui/ImGuiCameraOverlay.cpp

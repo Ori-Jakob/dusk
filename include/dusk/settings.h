@@ -293,6 +293,7 @@ struct UserSettings {
         ConfigVar<std::string> graphicsBackend;
         ConfigVar<bool> skipPreLaunchUI;
         ConfigVar<bool> showPipelineCompilation;
+        ConfigVar<bool> textureReplacementAutoRefresh;
         ConfigVar<bool> enableExperimentalPbr;
         ConfigVar<bool> enableExperimentalLighting;
         ConfigVar<bool> gxFogOverrideEnabled;

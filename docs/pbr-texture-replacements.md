@@ -22,8 +22,9 @@ Texture replacements are loaded recursively from:
 %APPDATA%\TwilitRealm\Dusk\texture_replacements
 ```
 
-PBR maps must sit next to the base replacement texture they belong to. They use the same stem and file extension as the
-base texture with a suffix appended before `.dds`.
+PBR maps must sit next to the base replacement texture they belong to. They use the same stem as the base texture with a
+suffix appended before the extension. DDS and PNG are both supported for the base replacement and sidecar maps; the
+examples below use DDS.
 
 Example:
 
@@ -60,8 +61,21 @@ authoring, or use loose channel maps when you want to author individual channels
 | Normal | No | `_normal`, `_n` | Tangent-space normal override. |
 | Emissive | No | `_emissive`, `_e` | RGB is added after direct lighting. |
 
-All PBR maps must be DDS files. Sidecar maps are loaded without separate `_mipN` sidecar chains. Use the same dimensions
-as the base color texture unless you are deliberately testing lower-resolution material maps.
+PBR maps can be DDS or PNG files. Sidecar maps are loaded without separate `_mipN` sidecar chains. Use the same
+dimensions as the base color texture unless you are deliberately testing lower-resolution material maps. Avoid keeping
+both DDS and PNG files with the same stem in the same folder, since the recursive scan will use whichever one it indexes
+first.
+
+## Refreshing Replacements During Gameplay
+
+Aurora indexes replacement files at startup and caches loaded GPU textures. When authoring textures while the game is
+running, use `Shift+F1 > Debug > Graphics Settings > Experimental Rendering > Refresh Texture Replacements Now` to
+rebuild the index and clear the texture caches. The `PBR Materials` window has the same button under `Texture
+Replacements`.
+
+For iterative material work, `Auto Refresh Texture Replacements` polls the replacement folder periodically and refreshes
+when DDS or PNG files are added, removed, renamed, or edited. Keep it off during normal play if the replacement folder is
+large, since the poll is recursive.
 
 ## RMAOS Channel Packing
 
@@ -121,7 +135,7 @@ need a base replacement texture. Use one of these material names:
 - `ordon_sword_blade`
 - `master_sword_blade`
 
-The same suffixes from Required And Optional Maps are supported:
+The same suffixes from Required And Optional Maps are supported. DDS examples are shown, but `.png` works too:
 
 | Map | Ordon Sword example | Master Sword example |
 | --- | --- | --- |

@@ -371,6 +371,7 @@ namespace dusk {
             m_menuTools.ShowStubLog();
             m_menuTools.ShowBloomWindow();
             m_menuTools.ShowPbrWindow();
+            m_menuTools.ShowTextureReplacementDebugWindow();
             m_menuTools.ShowPbrEnhancedLightingWindow();
             m_menuTools.ShowLightingSceneEditorWindow();
             m_menuTools.ShowPbrIblOverlay();

@@ -12,6 +12,7 @@
 #include "ImGuiLightingTools.hpp"
 #include "ImGuiMenuTools.hpp"
 #include "ImGuiPbrTools.hpp"
+#include "ImGuiTextureReplacementDebug.hpp"
 
 #include "ImGuiEngine.hpp"
 #include "d/actor/d_a_alink.h"
@@ -43,6 +44,26 @@ void ApplyFogOverrideSettings() {
     aurora_set_fog_override(backend.gxFogOverrideEnabled.getValue(), backend.gxFogExposure.getValue(),
                             backend.gxFogOpacity.getValue(), backend.gxFogColorR.getValue(),
                             backend.gxFogColorG.getValue(), backend.gxFogColorB.getValue());
+}
+
+void ApplyTextureReplacementRefreshSettings() {
+    aurora_set_texture_replacement_auto_refresh(
+        dusk::getSettings().backend.textureReplacementAutoRefresh.getValue());
+}
+
+void DrawTextureReplacementRefreshControls() {
+    auto& backend = dusk::getSettings().backend;
+
+    bool autoRefresh = backend.textureReplacementAutoRefresh;
+    if (ImGui::MenuItem("Auto Refresh Texture Replacements", nullptr, autoRefresh)) {
+        autoRefresh = !autoRefresh;
+        backend.textureReplacementAutoRefresh.setValue(autoRefresh);
+        ApplyTextureReplacementRefreshSettings();
+        dusk::config::Save();
+    }
+    if (ImGui::MenuItem("Refresh Texture Replacements Now")) {
+        aurora_refresh_texture_replacements();
+    }
 }
 
 void ResetFogOverrideSettings() {
@@ -157,6 +178,7 @@ namespace dusk {
 
     void ImGuiMenuTools::ApplyGraphicsDebugSettings() {
         ApplyFogOverrideSettings();
+        ApplyTextureReplacementRefreshSettings();
     }
 
     void ImGuiMenuTools::draw() {
@@ -221,7 +243,10 @@ namespace dusk {
                     dusk::imgui_lighting::DrawExperimentalLightingToggle();
 
                     ImGui::Separator();
+                    DrawTextureReplacementRefreshControls();
+                    ImGui::Separator();
                     ImGui::MenuItem("PBR Materials", nullptr, &m_showPbrWindow);
+                    ImGui::MenuItem("Texture Replacement PBR Debug", nullptr, &m_showTextureReplacementDebugWindow);
                     ImGui::MenuItem("Lighting And Shadows", nullptr, &m_showPbrEnhancedLightingWindow);
                     ImGui::MenuItem("Light Editor", nullptr, &m_showLightingSceneEditorWindow);
                     ImGui::MenuItem("IBL Status Overlay", nullptr, &m_showPbrIblOverlay);
@@ -271,6 +296,10 @@ namespace dusk {
 
     void ImGuiMenuTools::ShowPbrWindow() {
         dusk::imgui_pbr::DrawMaterialOverrideWindow(m_showPbrWindow);
+    }
+
+    void ImGuiMenuTools::ShowTextureReplacementDebugWindow() {
+        dusk::imgui_texture_replacement_debug::DrawWindow(m_showTextureReplacementDebugWindow);
     }
 
     void ImGuiMenuTools::ShowPbrEnhancedLightingWindow() {
