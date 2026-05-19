@@ -17,6 +17,9 @@
 #include "JSystem/JKernel/JKRSolidHeap.h"
 #include "JSystem/J3DGraphAnimator/J3DMaterialAnm.h"
 #include <cstring>
+#if TARGET_PC
+#include "dusk/terrain_texture_sampling.h"
+#endif
 
 const char* daBg_c::setArcName() {
     static char arcName[32];
@@ -197,6 +200,10 @@ int daBg_c::createHeap() {
             if (bgPart->model == NULL) {
                 return 0;
             }
+#if TARGET_PC
+            dusk::registerTerrainTextureSamplingModel(modelData);
+            dusk::applyTerrainTextureSampling(modelData);
+#endif
 
             bgPart->tevstr = JKR_NEW dKy_tevstr_c();
             if (bgPart->tevstr == NULL) {
@@ -253,6 +260,14 @@ static void dummy() {
 
 daBg_c::~daBg_c() {
     int roomNo = fopAcM_GetParam(this);
+
+#if TARGET_PC
+    for (int i = 0; i < 6; ++i) {
+        if (mBgParts[i].model != NULL) {
+            dusk::unregisterTerrainTextureSamplingModel(mBgParts[i].model->getModelData());
+        }
+    }
+#endif
 
     dBgp_c* bgp = dStage_roomControl_c::getBgp(roomNo);
     if (bgp != NULL) {
