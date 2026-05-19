@@ -28,6 +28,7 @@ namespace dusk {
         void ShowStateShare();
         void ShowInputViewer();
         void ShowActorSpawner();
+        void ShowTerrainTextureSampling();
 
     private:
 		bool m_showDebugOverlay = false;
@@ -56,6 +57,7 @@ namespace dusk {
         ImGuiStateShare m_stateShare;
 
         bool m_showActorSpawner = false;
+        bool m_showTerrainTextureSampling = false;
         int m_inputOverlayCorner = 3;
         std::string m_controllerName;
     };
