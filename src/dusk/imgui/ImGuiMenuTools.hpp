@@ -29,6 +29,7 @@ namespace dusk {
         void ShowInputViewer();
         void ShowActorSpawner();
         void ShowTerrainTextureSampling();
+        void ShowTextureReplacementDebug();
 
     private:
 		bool m_showDebugOverlay = false;
@@ -58,6 +59,7 @@ namespace dusk {
 
         bool m_showActorSpawner = false;
         bool m_showTerrainTextureSampling = false;
+        bool m_showTextureReplacementDebug = false;
         int m_inputOverlayCorner = 3;
         std::string m_controllerName;
     };

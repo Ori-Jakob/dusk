@@ -375,6 +375,7 @@ namespace dusk {
             m_menuTools.ShowStateShare();
             m_menuTools.ShowActorSpawner();
             m_menuTools.ShowTerrainTextureSampling();
+            m_menuTools.ShowTextureReplacementDebug();
         }
 
         // Hide mouse cursor if the F1 menu is not open and the cursor is idle for 3 seconds.

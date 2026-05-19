@@ -106,6 +106,7 @@ namespace dusk {
             ImGui::MenuItem("Stub Log", nullptr, &m_showStubLog);
             ImGui::MenuItem("Actor Spawner", nullptr, &m_showActorSpawner);
             ImGui::MenuItem("Terrain Texture Variation", nullptr, &m_showTerrainTextureSampling);
+            ImGui::MenuItem("Texture Replacements", nullptr, &m_showTextureReplacementDebug);
 
             if (!dusk::IsGameLaunched) {
                 ImGui::EndDisabled();
