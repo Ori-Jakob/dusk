@@ -15,6 +15,7 @@
 #include <algorithm>
 #include <array>
 #include <cctype>
+#include <cfloat>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
@@ -334,10 +335,22 @@ void draw_toolbar() {
             s_loadedTextures.size() == 1 ? "" : "s");
     }
     ImGui::SameLine();
-    ImGui::InputTextWithHint("Filter", "replacement, original name, path, size, or format", s_filter.data(), s_filter.size());
+    constexpr const char* loadedOnlyLabel = "Loaded in scene only";
+    const ImGuiStyle& style = ImGui::GetStyle();
+    const float checkboxWidth =
+        ImGui::GetFrameHeight() + style.ItemInnerSpacing.x + ImGui::CalcTextSize(loadedOnlyLabel).x;
+    const float availableWidth = ImGui::GetContentRegionAvail().x;
+    constexpr float minInlineFilterWidth = 180.0f;
+    const bool canKeepFiltersInline = availableWidth >= checkboxWidth + style.ItemSpacing.x + minInlineFilterWidth;
 
-    ImGui::SameLine();
-    ImGui::Checkbox("Loaded in scene only", &s_loadedOnly);
+    ImGui::SetNextItemWidth(canKeepFiltersInline ? availableWidth - checkboxWidth - style.ItemSpacing.x : -FLT_MIN);
+    ImGui::InputTextWithHint("##TextureReplacementFilter", "replacement, original name, path, size, or format",
+                             s_filter.data(), s_filter.size());
+
+    if (canKeepFiltersInline) {
+        ImGui::SameLine();
+    }
+    ImGui::Checkbox(loadedOnlyLabel, &s_loadedOnly);
     if (ImGui::IsItemHovered()) {
         ImGui::SetTooltip("Filters to replacement files currently used by loaded J3D model textures.");
     }
