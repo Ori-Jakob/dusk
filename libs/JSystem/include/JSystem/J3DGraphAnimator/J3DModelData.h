@@ -8,6 +8,13 @@
 
 class JUTNameTab;
 
+#if TARGET_PC
+class J3DModelData;
+namespace dusk {
+void unregisterTextureReplacementDebugModel(J3DModelData* modelData);
+}
+#endif
+
 /**
  * @ingroup jsystem-j3d
  * 
@@ -27,7 +34,11 @@ public:
     bool needsInterpCallBack() const;
 #endif
 
-    virtual ~J3DModelData() {}
+    virtual ~J3DModelData() {
+#if TARGET_PC
+        dusk::unregisterTextureReplacementDebugModel(this);
+#endif
+    }
 
     void simpleCalcMaterial(Mtx mtx) { simpleCalcMaterial(0, mtx); }
     J3DMaterialTable& getMaterialTable() { return mMaterialTable; }

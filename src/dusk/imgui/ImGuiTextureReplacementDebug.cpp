@@ -1,5 +1,7 @@
 #include "ImGuiMenuTools.hpp"
 
+#include "dusk/texture_replacement_debug.h"
+
 #include <aurora/gfx.h>
 #include <dolphin/gx/GXTexture.h>
 #include <dolphin/gx/GXTextureReplacement.h>
@@ -11,6 +13,8 @@
 #include <cctype>
 #include <cstdint>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace dusk {
@@ -21,12 +25,16 @@ struct ReplacementRow {
     std::string name;
     std::string path;
     std::string searchText;
+    std::string baseSearchText;
+    std::string loadedTextureNames;
+    std::uint32_t loadedUseCount = 0;
     bool loadedReplacementInfo = false;
     bool failedReplacementInfo = false;
 };
 
 std::array<char, 256> s_filter{};
 std::vector<ReplacementRow> s_rows;
+std::vector<TextureReplacementObservedTexture> s_loadedTextures;
 std::string s_rootPath;
 std::string s_status;
 bool s_loadedOnly = false;
@@ -114,13 +122,63 @@ std::string replacement_size_text(const ReplacementRow& row) {
 }
 
 void rebuild_search_text(ReplacementRow& row) {
-    row.searchText = lower_ascii(fmt::format(
+    row.baseSearchText = lower_ascii(fmt::format(
         "{} {} {}x{} {}",
         row.name,
         row.path,
         row.info.original_width,
         row.info.original_height,
         texture_format_name(row.info.original_format)));
+    row.searchText = row.baseSearchText;
+    if (!row.loadedTextureNames.empty()) {
+        row.searchText += ' ';
+        row.searchText += lower_ascii(row.loadedTextureNames);
+    }
+}
+
+void refresh_loaded_matches() {
+    s_loadedTextures = collectTextureReplacementObservedTextures();
+
+    struct LoadedMatch {
+        std::uint32_t count = 0;
+        std::string names;
+        std::unordered_set<std::string> uniqueNames;
+    };
+
+    std::unordered_map<std::string, LoadedMatch> matchesByPath;
+    for (const TextureReplacementObservedTexture& texture : s_loadedTextures) {
+        if (texture.replacementPath.empty()) {
+            continue;
+        }
+
+        LoadedMatch& match = matchesByPath[texture.replacementPath];
+        ++match.count;
+
+        const std::string name = texture.textureName.empty() ? "(unnamed)" : texture.textureName;
+        if (match.uniqueNames.insert(name).second) {
+            if (!match.names.empty()) {
+                match.names += ", ";
+            }
+            match.names += name;
+        }
+    }
+
+    for (ReplacementRow& row : s_rows) {
+        row.loadedUseCount = 0;
+        row.loadedTextureNames.clear();
+
+        const auto match = matchesByPath.find(row.path);
+        if (match != matchesByPath.end()) {
+            row.loadedUseCount = match->second.count;
+            row.loadedTextureNames = match->second.names;
+        }
+
+        row.searchText = row.baseSearchText;
+        if (!row.loadedTextureNames.empty()) {
+            row.searchText += ' ';
+            row.searchText += lower_ascii(row.loadedTextureNames);
+        }
+    }
 }
 
 void refresh_rows() {
@@ -146,11 +204,21 @@ void refresh_rows() {
         s_rows.push_back(std::move(row));
     }
 
-    s_status = fmt::format("Indexed {} replacement texture{}.", s_rows.size(), s_rows.size() == 1 ? "" : "s");
+    refresh_loaded_matches();
+    s_status = fmt::format(
+        "Indexed {} replacement texture{}; observed {} loaded J3D texture{}.",
+        s_rows.size(),
+        s_rows.size() == 1 ? "" : "s",
+        s_loadedTextures.size(),
+        s_loadedTextures.size() == 1 ? "" : "s");
     s_needsRefresh = false;
 }
 
 bool row_matches_filter(const ReplacementRow& row) {
+    if (s_loadedOnly && row.loadedUseCount == 0) {
+        return false;
+    }
+
     if (s_filter[0] == '\0') {
         return true;
     }
@@ -200,14 +268,20 @@ void draw_toolbar() {
         refresh_rows();
     }
     ImGui::SameLine();
-    ImGui::InputTextWithHint("Filter", "name, path, size, or format", s_filter.data(), s_filter.size());
+    if (ImGui::Button("Refresh Loaded")) {
+        refresh_loaded_matches();
+        s_status = fmt::format(
+            "Observed {} loaded J3D texture{}.",
+            s_loadedTextures.size(),
+            s_loadedTextures.size() == 1 ? "" : "s");
+    }
+    ImGui::SameLine();
+    ImGui::InputTextWithHint("Filter", "replacement, original name, path, size, or format", s_filter.data(), s_filter.size());
 
-    ImGui::BeginDisabled();
     ImGui::SameLine();
     ImGui::Checkbox("Loaded in scene only", &s_loadedOnly);
-    ImGui::EndDisabled();
-    if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
-        ImGui::SetTooltip("This will be enabled once the game-side texture inventory is added.");
+    if (ImGui::IsItemHovered()) {
+        ImGui::SetTooltip("Filters to replacement files currently used by loaded J3D model textures.");
     }
 }
 
@@ -233,12 +307,14 @@ void draw_rows_table(const std::vector<ReplacementRow*>& rows) {
         ImGuiTableFlags_Reorderable |
         ImGuiTableFlags_ScrollY;
 
-    if (!ImGui::BeginTable("texture_replacement_debug_entries", 7, flags, ImVec2(0.0f, 0.0f))) {
+    if (!ImGui::BeginTable("texture_replacement_debug_entries", 9, flags, ImVec2(0.0f, 0.0f))) {
         return;
     }
 
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("Replacement Name", ImGuiTableColumnFlags_WidthStretch);
+    ImGui::TableSetupColumn("Loaded", ImGuiTableColumnFlags_WidthFixed, 72.0f);
+    ImGui::TableSetupColumn("Original Names", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn("Original Size", ImGuiTableColumnFlags_WidthFixed, 96.0f);
     ImGui::TableSetupColumn("Replacement Size", ImGuiTableColumnFlags_WidthFixed, 118.0f);
     ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 72.0f);
@@ -262,6 +338,16 @@ void draw_rows_table(const std::vector<ReplacementRow*>& rows) {
                 s_selectedIndex = row.index;
                 load_replacement_info(row);
             }
+
+            ImGui::TableNextColumn();
+            if (row.loadedUseCount > 0) {
+                ImGui::Text("%u", row.loadedUseCount);
+            } else {
+                ImGui::TextUnformatted("-");
+            }
+
+            ImGui::TableNextColumn();
+            ImGui::TextUnformatted(row.loadedTextureNames.empty() ? "-" : row.loadedTextureNames.c_str());
 
             ImGui::TableNextColumn();
             ImGui::Text("%ux%u", row.info.original_width, row.info.original_height);

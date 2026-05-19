@@ -18,6 +18,8 @@
 #include <utility>
 
 #if TARGET_PC
+#include "dusk/texture_replacement_debug.h"
+
 static void AssignMaterialNames(const J3DModelLoader& loader) {
     auto table = loader.mpMaterialTable;
     auto materialName = table->getMaterialName();
@@ -132,6 +134,7 @@ J3DModelData* J3DModelLoader::load(void const* i_data, u32 i_flags) {
     }
 #if TARGET_PC
     AssignMaterialNames(*this);
+    dusk::registerTextureReplacementDebugModel(mpModelData);
 #endif
     return mpModelData;
 }
@@ -234,6 +237,9 @@ J3DModelData* J3DModelLoader::loadBinaryDisplayList(void const* i_data, u32 i_fl
     mpModelData->getJointTree().findImportantMtxIndex();
     setupBBoardInfo();
     mpModelData->indexToPtr();
+#if TARGET_PC
+    dusk::registerTextureReplacementDebugModel(mpModelData);
+#endif
     return mpModelData;
 }
 

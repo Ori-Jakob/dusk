@@ -1416,6 +1416,7 @@ set(DUSK_FILES
         include/dusk/config.hpp
         include/dusk/dvd_asset.hpp
         include/dusk/scope_guard.hpp
+        include/dusk/texture_replacement_debug.h
         src/dusk/dvd_asset.cpp
         src/d/actor/d_a_alink_dusk.cpp
         src/dusk/asserts.cpp
@@ -1441,6 +1442,7 @@ set(DUSK_FILES
         src/dusk/speedrun.cpp
         src/dusk/stubs.cpp
         src/dusk/terrain_texture_sampling.cpp
+        src/dusk/texture_replacement_debug.cpp
         src/dusk/update_check.cpp
         src/dusk/update_check.hpp
         #src/dusk/m_Do_ext_dusk.cpp
