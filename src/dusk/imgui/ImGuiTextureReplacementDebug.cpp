@@ -365,20 +365,13 @@ void draw_rows_table(const std::vector<ReplacementRow*>& rows, ImVec2 size) {
         ImGuiTableFlags_Reorderable |
         ImGuiTableFlags_ScrollY;
 
-    if (!ImGui::BeginTable("texture_replacement_debug_entries", 9, flags, size)) {
+    if (!ImGui::BeginTable("texture_replacement_debug_entries", 2, flags, size)) {
         return;
     }
 
     ImGui::TableSetupScrollFreeze(0, 1);
     ImGui::TableSetupColumn("Replacement Name", ImGuiTableColumnFlags_WidthStretch);
     ImGui::TableSetupColumn("Loaded", ImGuiTableColumnFlags_WidthFixed, 72.0f);
-    ImGui::TableSetupColumn("Original Names", ImGuiTableColumnFlags_WidthStretch);
-    ImGui::TableSetupColumn("Original Size", ImGuiTableColumnFlags_WidthFixed, 96.0f);
-    ImGui::TableSetupColumn("Replacement Size", ImGuiTableColumnFlags_WidthFixed, 118.0f);
-    ImGui::TableSetupColumn("Format", ImGuiTableColumnFlags_WidthFixed, 72.0f);
-    ImGui::TableSetupColumn("Mips", ImGuiTableColumnFlags_WidthFixed, 52.0f);
-    ImGui::TableSetupColumn("Path", ImGuiTableColumnFlags_WidthStretch);
-    ImGui::TableSetupColumn("Copy", ImGuiTableColumnFlags_WidthFixed, 52.0f);
     ImGui::TableHeadersRow();
 
     ImGuiListClipper clipper;
@@ -402,33 +395,6 @@ void draw_rows_table(const std::vector<ReplacementRow*>& rows, ImVec2 size) {
                 ImGui::Text("%u", row.loadedUseCount);
             } else {
                 ImGui::TextUnformatted("-");
-            }
-
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(row.loadedTextureNames.empty() ? "-" : row.loadedTextureNames.c_str());
-
-            ImGui::TableNextColumn();
-            ImGui::Text("%ux%u", row.info.original_width, row.info.original_height);
-
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(replacement_size_text(row).c_str());
-
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(texture_format_name(row.info.original_format));
-
-            ImGui::TableNextColumn();
-            if (row.info.has_replacement_info) {
-                ImGui::Text("%u", row.info.replacement_mips);
-            } else {
-                ImGui::TextUnformatted("-");
-            }
-
-            ImGui::TableNextColumn();
-            ImGui::TextUnformatted(row.path.c_str());
-
-            ImGui::TableNextColumn();
-            if (ImGui::SmallButton("Path")) {
-                ImGui::SetClipboardText(row.path.c_str());
             }
             ImGui::PopID();
         }
@@ -457,6 +423,16 @@ void draw_preview_image(const ImGuiTexturePreview& preview) {
     ImGui::TextDisabled("%ux%u", preview.width, preview.height);
 }
 
+void draw_detail_value(const char* label, const char* value) {
+    ImGui::Text("%s:", label);
+    ImGui::SameLine();
+    ImGui::TextUnformatted(value);
+}
+
+void draw_detail_value(const char* label, const std::string& value) {
+    draw_detail_value(label, value.c_str());
+}
+
 void draw_selected_details() {
     ReplacementRow* row = selected_row();
     if (row == nullptr) {
@@ -464,11 +440,39 @@ void draw_selected_details() {
         return;
     }
 
-    ImGui::TextUnformatted(row->name.c_str());
+    ImGui::Text("Replacement");
     ImGui::SameLine();
-    if (ImGui::SmallButton("Copy Replacement Path")) {
+    if (ImGui::SmallButton("Copy Name")) {
+        ImGui::SetClipboardText(row->name.c_str());
+    }
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Copy Path")) {
         ImGui::SetClipboardText(row->path.c_str());
     }
+
+    draw_detail_value("Name", row->name);
+    ImGui::Text("Path:");
+    ImGui::SameLine();
+    ImGui::TextWrapped("%s", row->path.c_str());
+    draw_detail_value("Original names", row->loadedTextureNames.empty() ? "(not currently loaded)" : row->loadedTextureNames);
+    ImGui::Text("Loaded uses: %u", row->loadedUseCount);
+    ImGui::Text(
+        "Original size: %ux%u",
+        row->info.original_width,
+        row->info.original_height);
+    draw_detail_value("Original format", texture_format_name(row->info.original_format));
+    draw_detail_value("Has TLUT", row->info.has_tlut ? "Yes" : "No");
+    draw_detail_value("Replacement size", replacement_size_text(*row));
+    if (row->info.has_replacement_info) {
+        ImGui::Text("Replacement mips: %u", row->info.replacement_mips);
+        draw_detail_value("Arbitrary mips", row->info.has_arbitrary_mips ? "Yes" : "No");
+    } else {
+        draw_detail_value("Replacement mips", "-");
+        draw_detail_value("Arbitrary mips", "-");
+    }
+
+    ImGui::Separator();
+    ImGui::TextUnformatted("Original Preview");
 
     TextureReplacementObservedTexture* loadedTexture = first_loaded_texture(*row);
     if (loadedTexture == nullptr) {
@@ -476,7 +480,6 @@ void draw_selected_details() {
         return;
     }
 
-    ImGui::Text("Original: %s", loadedTexture->textureName.empty() ? "(unnamed)" : loadedTexture->textureName.c_str());
     const ImGuiTexturePreview& preview = original_preview_for(*loadedTexture);
     draw_preview_image(preview);
 }
@@ -502,8 +505,8 @@ void ImGuiMenuTools::ShowTextureReplacementDebug() {
     ImGui::Separator();
 
     const auto rows = filtered_rows();
-    const float previewHeight = 240.0f;
-    const float tableHeight = std::max(180.0f, ImGui::GetContentRegionAvail().y - previewHeight);
+    const float detailsHeight = 340.0f;
+    const float tableHeight = std::max(180.0f, ImGui::GetContentRegionAvail().y - detailsHeight);
     draw_rows_table(rows, ImVec2(0.0f, tableHeight));
     ImGui::Separator();
     draw_selected_details();
