@@ -25,6 +25,7 @@
 #endif
 
 namespace aurora::gx {
+extern bool enableArbitraryMips;
 extern bool enableLodBias;
 }
 
@@ -74,6 +75,10 @@ namespace dusk {
                 if (ImGui::Checkbox("Disable Water Refraction", &disableWaterRefraction)) {
                     getSettings().game.disableWaterRefraction.setValue(disableWaterRefraction);
                     config::Save();
+                }
+                ImGui::Checkbox("Enable Arbitrary Mips", &aurora::gx::enableArbitraryMips);
+                if (ImGui::IsItemHovered()) {
+                    ImGui::SetTooltip("Allows textures with manually authored mip chains to sample below the base level.");
                 }
                 ImGui::Checkbox("Enable LOD Bias", &aurora::gx::enableLodBias);
                 ImGui::EndMenu();
