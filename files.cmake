@@ -1455,6 +1455,8 @@ set(DUSK_FILES
         src/dusk/imgui/ImGuiBloomWindow.hpp
         src/dusk/imgui/ImGuiMenuTools.cpp
         src/dusk/imgui/ImGuiMenuTools.hpp
+        src/dusk/imgui/ImGuiTexturePreview.hpp
+        src/dusk/imgui/ImGuiTexturePreview.cpp
         src/dusk/imgui/ImGuiActorSpawner.cpp
         src/dusk/imgui/ImGuiTerrainTextureSampling.cpp
         src/dusk/imgui/ImGuiTextureReplacementDebug.cpp

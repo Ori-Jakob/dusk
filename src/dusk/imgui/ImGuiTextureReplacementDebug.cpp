@@ -1,6 +1,9 @@
 #include "ImGuiMenuTools.hpp"
 
+#include "ImGuiTexturePreview.hpp"
 #include "dusk/texture_replacement_debug.h"
+
+#include "JSystem/J3DGraphBase/J3DTexture.h"
 
 #include <aurora/gfx.h>
 #include <dolphin/gx/GXTexture.h>
@@ -9,12 +12,14 @@
 #include "fmt/format.h"
 #include "imgui.h"
 
+#include <algorithm>
 #include <array>
 #include <cctype>
 #include <cstdint>
 #include <string>
 #include <unordered_map>
 #include <unordered_set>
+#include <utility>
 #include <vector>
 
 namespace dusk {
@@ -32,9 +37,17 @@ struct ReplacementRow {
     bool failedReplacementInfo = false;
 };
 
+struct OriginalPreviewCache {
+    J3DTexture* texture = nullptr;
+    std::uint16_t textureIndex = 0;
+    ResTIMG* timg = nullptr;
+    ImGuiTexturePreview preview;
+};
+
 std::array<char, 256> s_filter{};
 std::vector<ReplacementRow> s_rows;
 std::vector<TextureReplacementObservedTexture> s_loadedTextures;
+std::vector<OriginalPreviewCache> s_originalPreviewCache;
 std::string s_rootPath;
 std::string s_status;
 bool s_loadedOnly = false;
@@ -138,6 +151,7 @@ void rebuild_search_text(ReplacementRow& row) {
 
 void refresh_loaded_matches() {
     s_loadedTextures = collectTextureReplacementObservedTextures();
+    s_originalPreviewCache.clear();
 
     struct LoadedMatch {
         std::uint32_t count = 0;
@@ -262,6 +276,50 @@ std::vector<ReplacementRow*> filtered_rows() {
     return out;
 }
 
+ReplacementRow* selected_row() {
+    if (s_selectedIndex == UINT32_MAX) {
+        return nullptr;
+    }
+
+    for (ReplacementRow& row : s_rows) {
+        if (row.index == s_selectedIndex) {
+            return &row;
+        }
+    }
+
+    return nullptr;
+}
+
+TextureReplacementObservedTexture* first_loaded_texture(const ReplacementRow& row) {
+    for (TextureReplacementObservedTexture& texture : s_loadedTextures) {
+        if (texture.replacementPath == row.path) {
+            return &texture;
+        }
+    }
+    return nullptr;
+}
+
+const ImGuiTexturePreview& original_preview_for(const TextureReplacementObservedTexture& texture) {
+    ResTIMG* timg = texture.texture != nullptr ? texture.texture->getResTIMG(texture.textureIndex) : nullptr;
+    for (OriginalPreviewCache& cache : s_originalPreviewCache) {
+        if (cache.texture == texture.texture &&
+            cache.textureIndex == texture.textureIndex &&
+            cache.timg == timg)
+        {
+            return cache.preview;
+        }
+    }
+
+    OriginalPreviewCache cache{
+        .texture = texture.texture,
+        .textureIndex = texture.textureIndex,
+        .timg = timg,
+        .preview = makeJ3DTexturePreview(texture.texture, texture.textureIndex),
+    };
+    s_originalPreviewCache.push_back(std::move(cache));
+    return s_originalPreviewCache.back().preview;
+}
+
 void draw_toolbar() {
     if (ImGui::Button("Refresh")) {
         aurora_reload_texture_replacements();
@@ -299,7 +357,7 @@ void draw_root_path() {
     }
 }
 
-void draw_rows_table(const std::vector<ReplacementRow*>& rows) {
+void draw_rows_table(const std::vector<ReplacementRow*>& rows, ImVec2 size) {
     constexpr ImGuiTableFlags flags =
         ImGuiTableFlags_Borders |
         ImGuiTableFlags_RowBg |
@@ -307,7 +365,7 @@ void draw_rows_table(const std::vector<ReplacementRow*>& rows) {
         ImGuiTableFlags_Reorderable |
         ImGuiTableFlags_ScrollY;
 
-    if (!ImGui::BeginTable("texture_replacement_debug_entries", 9, flags, ImVec2(0.0f, 0.0f))) {
+    if (!ImGui::BeginTable("texture_replacement_debug_entries", 9, flags, size)) {
         return;
     }
 
@@ -378,6 +436,50 @@ void draw_rows_table(const std::vector<ReplacementRow*>& rows) {
 
     ImGui::EndTable();
 }
+
+void draw_preview_image(const ImGuiTexturePreview& preview) {
+    if (!preview.error.empty()) {
+        ImGui::TextDisabled("%s", preview.error.c_str());
+        return;
+    }
+
+    if (preview.texture == 0 || preview.width == 0 || preview.height == 0) {
+        ImGui::TextDisabled("No preview available.");
+        return;
+    }
+
+    const ImVec2 avail = ImGui::GetContentRegionAvail();
+    const float maxWidth = std::min(avail.x, 320.0f);
+    const float maxHeight = 180.0f;
+    const float scale = std::min(maxWidth / preview.width, maxHeight / preview.height);
+    const ImVec2 size(preview.width * scale, preview.height * scale);
+    ImGui::Image(preview.texture, size);
+    ImGui::TextDisabled("%ux%u", preview.width, preview.height);
+}
+
+void draw_selected_details() {
+    ReplacementRow* row = selected_row();
+    if (row == nullptr) {
+        ImGui::TextDisabled("Select a texture replacement to inspect it.");
+        return;
+    }
+
+    ImGui::TextUnformatted(row->name.c_str());
+    ImGui::SameLine();
+    if (ImGui::SmallButton("Copy Replacement Path")) {
+        ImGui::SetClipboardText(row->path.c_str());
+    }
+
+    TextureReplacementObservedTexture* loadedTexture = first_loaded_texture(*row);
+    if (loadedTexture == nullptr) {
+        ImGui::TextDisabled("Original preview unavailable because this replacement is not currently loaded by a J3D model.");
+        return;
+    }
+
+    ImGui::Text("Original: %s", loadedTexture->textureName.empty() ? "(unnamed)" : loadedTexture->textureName.c_str());
+    const ImGuiTexturePreview& preview = original_preview_for(*loadedTexture);
+    draw_preview_image(preview);
+}
 } // namespace
 
 void ImGuiMenuTools::ShowTextureReplacementDebug() {
@@ -400,7 +502,11 @@ void ImGuiMenuTools::ShowTextureReplacementDebug() {
     ImGui::Separator();
 
     const auto rows = filtered_rows();
-    draw_rows_table(rows);
+    const float previewHeight = 240.0f;
+    const float tableHeight = std::max(180.0f, ImGui::GetContentRegionAvail().y - previewHeight);
+    draw_rows_table(rows, ImVec2(0.0f, tableHeight));
+    ImGui::Separator();
+    draw_selected_details();
 
     ImGui::End();
 }
