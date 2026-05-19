@@ -71,6 +71,7 @@
 #include <aurora/main.h>
 #include <aurora/dvd.h>
 #include <dolphin/dvd.h>
+#include <dolphin/gx/GXTextureSampling.h>
 
 #include "SDL3/SDL_init.h"
 #include "SDL3/SDL_filesystem.h"
@@ -586,6 +587,13 @@ int game_main(int argc, char* argv[]) {
         config.allowTextureReplacements = dusk::getSettings().game.enableTextureReplacements;
         config.allowTextureDumps = false;
         auroraInfo = aurora_initialize(argc, argv, &config);
+        // These are global defaults only; terrain code opts individual GX texture objects into sampling.
+        AuroraSetStochasticSamplingEnabled(
+            dusk::getSettings().game.enableStochasticTerrainTextures ? GX_TRUE : GX_FALSE);
+        AuroraSetStochasticSamplingParams(
+            dusk::getSettings().game.stochasticTerrainCellScale,
+            dusk::getSettings().game.stochasticTerrainJitter,
+            dusk::getSettings().game.stochasticTerrainBlendWidth);
     }
 
 #ifdef DUSK_DISCORD

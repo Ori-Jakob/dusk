@@ -60,6 +60,11 @@ UserSettings g_userSettings = {
         .bloomMultiplier {"game.bloomMultiplier", 1.0f},
         .disableWaterRefraction {"game.disableWaterRefraction", false},
         .enableTextureReplacements {"game.enableTextureReplacements", true},
+        .enableStochasticTerrainTextures {"game.enableStochasticTerrainTextures", false},
+        .enableStochasticPathTextures {"game.enableStochasticPathTextures", false},
+        .stochasticTerrainCellScale {"game.stochasticTerrainCellScale", 1.0f},
+        .stochasticTerrainJitter {"game.stochasticTerrainJitter", 1.0f},
+        .stochasticTerrainBlendWidth {"game.stochasticTerrainBlendWidth", 0.25f},
         .enableFrameInterpolation {"game.enableFrameInterpolation", FrameInterpMode::Off},
         .internalResolutionScale {"game.internalResolutionScale", 0},
         .shadowResolutionMultiplier {"game.shadowResolutionMultiplier", 1},
@@ -223,6 +228,11 @@ void registerSettings() {
     Register(g_userSettings.game.bloomMultiplier);
     Register(g_userSettings.game.disableWaterRefraction);
     Register(g_userSettings.game.enableTextureReplacements);
+    Register(g_userSettings.game.enableStochasticTerrainTextures);
+    Register(g_userSettings.game.enableStochasticPathTextures);
+    Register(g_userSettings.game.stochasticTerrainCellScale);
+    Register(g_userSettings.game.stochasticTerrainJitter);
+    Register(g_userSettings.game.stochasticTerrainBlendWidth);
     Register(g_userSettings.game.internalResolutionScale);
     Register(g_userSettings.game.resampler);
     Register(g_userSettings.game.shadowResolutionMultiplier);

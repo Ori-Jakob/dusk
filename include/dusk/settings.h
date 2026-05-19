@@ -148,6 +148,11 @@ struct UserSettings {
         ConfigVar<float> bloomMultiplier;
         ConfigVar<bool> disableWaterRefraction;
         ConfigVar<bool> enableTextureReplacements;
+        ConfigVar<bool> enableStochasticTerrainTextures;
+        ConfigVar<bool> enableStochasticPathTextures;
+        ConfigVar<float> stochasticTerrainCellScale;
+        ConfigVar<float> stochasticTerrainJitter;
+        ConfigVar<float> stochasticTerrainBlendWidth;
         ConfigVar<FrameInterpMode> enableFrameInterpolation;
         ConfigVar<int> internalResolutionScale;
         ConfigVar<int> shadowResolutionMultiplier;

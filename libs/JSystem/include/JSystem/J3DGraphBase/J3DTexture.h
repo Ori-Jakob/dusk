@@ -68,6 +68,15 @@ public:
     u8* getImgDataPtr(u16 index) const {
         return mpImgDataPtr[index];
     }
+
+    u8* getTlutDataPtr(u16 index) const {
+        return mpTlutDataPtr[index];
+    }
+
+    TGXTexObj* getTexObj(u16 index) const {
+        J3D_ASSERT_RANGE(76, index < mNum);
+        return &mpTexObj[index];
+    }
 #endif
 
     void setResTIMG(u16 index, const ResTIMG& timg) {
