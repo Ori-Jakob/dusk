@@ -21,6 +21,8 @@ struct ReplacementRow {
     std::string name;
     std::string path;
     std::string searchText;
+    bool loadedReplacementInfo = false;
+    bool failedReplacementInfo = false;
 };
 
 std::array<char, 256> s_filter{};
@@ -29,6 +31,7 @@ std::string s_rootPath;
 std::string s_status;
 bool s_loadedOnly = false;
 bool s_needsRefresh = true;
+std::uint32_t s_selectedIndex = UINT32_MAX;
 
 using ReplacementStringReader = u32 (*)(u32, char*, u32);
 
@@ -98,9 +101,16 @@ const char* texture_format_name(std::uint32_t format) {
 
 std::string replacement_size_text(const AuroraTextureReplacementEntryInfo& info) {
     if (!info.has_replacement_info) {
-        return "?";
+        return "Select row";
     }
     return fmt::format("{}x{}", info.replacement_width, info.replacement_height);
+}
+
+std::string replacement_size_text(const ReplacementRow& row) {
+    if (row.info.has_replacement_info) {
+        return replacement_size_text(row.info);
+    }
+    return row.failedReplacementInfo ? "Failed" : "Select row";
 }
 
 void rebuild_search_text(ReplacementRow& row) {
@@ -117,6 +127,7 @@ void refresh_rows() {
     s_rootPath = read_aurora_string(AuroraGetTextureReplacementRootPath);
 
     s_rows.clear();
+    s_selectedIndex = UINT32_MAX;
     const u32 count = AuroraGetTextureReplacementEntryCount();
     s_rows.reserve(count);
 
@@ -148,10 +159,34 @@ bool row_matches_filter(const ReplacementRow& row) {
     return row.searchText.find(needle) != std::string::npos;
 }
 
-std::vector<const ReplacementRow*> filtered_rows() {
-    std::vector<const ReplacementRow*> out;
+bool load_replacement_info(ReplacementRow& row) {
+    if (row.loadedReplacementInfo) {
+        return row.info.has_replacement_info;
+    }
+
+    if (AuroraLoadTextureReplacementEntryInfo(row.index, &row.info) == GX_FALSE) {
+        row.failedReplacementInfo = true;
+        s_status = fmt::format("Failed to load replacement metadata for {}.", row.name);
+        return false;
+    }
+
+    row.loadedReplacementInfo = true;
+    row.failedReplacementInfo = !row.info.has_replacement_info;
+    rebuild_search_text(row);
+
+    if (row.info.has_replacement_info) {
+        s_status = fmt::format("Loaded replacement metadata for {}.", row.name);
+        return true;
+    }
+
+    s_status = fmt::format("Replacement metadata unavailable for {}.", row.name);
+    return false;
+}
+
+std::vector<ReplacementRow*> filtered_rows() {
+    std::vector<ReplacementRow*> out;
     out.reserve(s_rows.size());
-    for (const ReplacementRow& row : s_rows) {
+    for (ReplacementRow& row : s_rows) {
         if (row_matches_filter(row)) {
             out.push_back(&row);
         }
@@ -190,7 +225,7 @@ void draw_root_path() {
     }
 }
 
-void draw_rows_table(const std::vector<const ReplacementRow*>& rows) {
+void draw_rows_table(const std::vector<ReplacementRow*>& rows) {
     constexpr ImGuiTableFlags flags =
         ImGuiTableFlags_Borders |
         ImGuiTableFlags_RowBg |
@@ -216,25 +251,33 @@ void draw_rows_table(const std::vector<const ReplacementRow*>& rows) {
     clipper.Begin(static_cast<int>(rows.size()));
     while (clipper.Step()) {
         for (int i = clipper.DisplayStart; i < clipper.DisplayEnd; ++i) {
-            const ReplacementRow& row = *rows[static_cast<size_t>(i)];
+            ReplacementRow& row = *rows[static_cast<size_t>(i)];
+            const bool isSelected = s_selectedIndex == row.index;
 
             ImGui::PushID(static_cast<int>(row.index));
             ImGui::TableNextRow();
 
             ImGui::TableNextColumn();
-            ImGui::TextUnformatted(row.name.c_str());
+            if (ImGui::Selectable(row.name.c_str(), isSelected, ImGuiSelectableFlags_SpanAllColumns)) {
+                s_selectedIndex = row.index;
+                load_replacement_info(row);
+            }
 
             ImGui::TableNextColumn();
             ImGui::Text("%ux%u", row.info.original_width, row.info.original_height);
 
             ImGui::TableNextColumn();
-            ImGui::TextUnformatted(replacement_size_text(row.info).c_str());
+            ImGui::TextUnformatted(replacement_size_text(row).c_str());
 
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(texture_format_name(row.info.original_format));
 
             ImGui::TableNextColumn();
-            ImGui::Text("%u", row.info.has_replacement_info ? row.info.replacement_mips : 0);
+            if (row.info.has_replacement_info) {
+                ImGui::Text("%u", row.info.replacement_mips);
+            } else {
+                ImGui::TextUnformatted("-");
+            }
 
             ImGui::TableNextColumn();
             ImGui::TextUnformatted(row.path.c_str());
